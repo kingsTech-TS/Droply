@@ -152,9 +152,9 @@ The user should see something similar to:
 │                                                  │
 │                  ─── OR ───                      │
 │                                                  │
-│             Join with a room code               │
+│             Join with a room code                │
 │                                                  │
-│             [ K7X9PQ  ] [ Join ]                │
+│             [ K7X9PQ  ] [ Join ]                 │
 │                                                  │
 └──────────────────────────────────────────────────┘
 ```
