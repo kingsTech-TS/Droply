@@ -23,6 +23,7 @@ export interface IceConfig {
 export interface RoomCreateRequest {
   device: DeviceInfoIn;
   kind?: RoomKind;
+  theme?: RoomTheme;
 }
 
 /** Host-only settings; omitted fields are unchanged. */

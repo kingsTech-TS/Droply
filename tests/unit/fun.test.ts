@@ -227,3 +227,16 @@ describe("PeerMessenger", () => {
     expect(await sending).toBe(false);
   });
 });
+
+describe("room themes", () => {
+  it("applies to the whole page and is removed for the default theme", async () => {
+    const { activeRoomTheme, applyRoomTheme, THEME_STYLES } = await import("@/lib/fun/themes");
+    applyRoomTheme("wedding");
+    expect(document.documentElement.dataset.roomTheme).toBe("wedding");
+    expect(activeRoomTheme()).toBe("wedding");
+    applyRoomTheme("default");
+    expect(document.documentElement.dataset.roomTheme).toBeUndefined();
+    expect(activeRoomTheme()).toBeNull();
+    for (const style of Object.values(THEME_STYLES)) expect(style.confetti.length).toBeGreaterThan(2);
+  });
+});

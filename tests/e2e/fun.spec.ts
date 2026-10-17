@@ -36,6 +36,9 @@ async function deviceMenu(page: Page, name: string, item: string): Promise<void>
 }
 
 test("send a text, chat and run a speed test between two browsers", async ({ browser }) => {
+  // The quick test moves 32 MB; headless Chrome's loopback is slow (~1-2 MB/s) when other
+  // tests run in parallel.
+  test.setTimeout(180_000);
   const { a, b, close } = await twoDevicesInARoom(browser);
 
   // Text drop: A → B, peer-to-peer.
@@ -59,7 +62,7 @@ test("send a text, chat and run a speed test between two browsers", async ({ bro
   const speed = a.getByRole("dialog", { name: "Speed test with Test Phone" });
   await speed.getByRole("radio").first().click();
   await speed.getByRole("button", { name: "Start test" }).click();
-  await expect(speed.getByText("Average")).toBeVisible({ timeout: 45_000 });
+  await expect(speed.getByText("Average")).toBeVisible({ timeout: 120_000 });
   await expect(speed.getByRole("button", { name: "Test again" })).toBeVisible();
   await expect(b.getByText("Incoming files")).toHaveCount(0);
 
@@ -146,4 +149,38 @@ test("the host can remove a device; guests can't", async ({ browser }) => {
   await expect(a.getByRole("article", { name: /^Test Phone/ })).toHaveCount(0);
 
   await close();
+});
+
+test("the theme picked when creating a room themes the room for everyone", async ({ browser }) => {
+  const ctxA = await browser.newContext();
+  const ctxB = await browser.newContext();
+  const a = await ctxA.newPage();
+  const b = await ctxB.newPage();
+  const primary = (page: Page) => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--primary").trim());
+
+  await a.goto("/");
+  const classic = await primary(a);
+  await a.getByRole("radio", { name: "Birthday" }).click();
+  // The home page previews the theme.
+  await expect(a.locator("html")).toHaveAttribute("data-room-theme", "birthday");
+  expect(await primary(a)).not.toBe(classic);
+
+  await a.getByRole("button", { name: "Create an empty room to receive" }).click();
+  await expect(a).toHaveURL(/\/room\//);
+  await expect(a.getByText("Birthday room")).toBeVisible();
+  await expect(a.locator("html")).toHaveAttribute("data-room-theme", "birthday");
+
+  // A guest gets the same theme from the server.
+  await b.goto(`/join/${await roomCode(a)}`);
+  await b.getByLabel("Your device name").fill("Test Phone");
+  await b.getByRole("button", { name: "Join room" }).click();
+  await expect(b.getByText("Birthday room")).toBeVisible();
+  await expect(b.locator("html")).toHaveAttribute("data-room-theme", "birthday");
+
+  // Leaving the room drops the theme on pages that aren't themed.
+  await b.goto("/about");
+  await expect(b.locator("html")).not.toHaveAttribute("data-room-theme", /.*/);
+
+  await ctxA.close();
+  await ctxB.close();
 });

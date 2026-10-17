@@ -1,8 +1,7 @@
 // Confetti, sounds and haptics. All of it is optional (preferences), respects reduced
 // motion, and uses no assets: sounds are synthesized with Web Audio.
 import { preferences, prefersReducedMotion } from "./prefs";
-
-const COLORS = ["#7c5cff", "#3b82f6", "#22c55e", "#f59e0b", "#ec4899", "#06b6d4"];
+import { activeRoomTheme, THEME_STYLES } from "./themes";
 
 /** A short confetti burst on a full-screen canvas that removes itself. */
 export function confetti(intensity: "small" | "big" = "small"): void {
@@ -19,6 +18,7 @@ export function confetti(intensity: "small" | "big" = "small"): void {
     canvas.remove();
     return;
   }
+  const colors = THEME_STYLES[activeRoomTheme() ?? "default"].confetti;
   const count = intensity === "big" ? 160 : 80;
   const particles = Array.from({ length: count }, () => ({
     x: canvas.width * (0.3 + Math.random() * 0.4),
@@ -28,7 +28,7 @@ export function confetti(intensity: "small" | "big" = "small"): void {
     size: (4 + Math.random() * 5) * dpr,
     rotation: Math.random() * Math.PI,
     spin: (Math.random() - 0.5) * 0.3,
-    color: COLORS[Math.floor(Math.random() * COLORS.length)]!,
+    color: colors[Math.floor(Math.random() * colors.length)]!,
   }));
   const started = performance.now();
   const duration = intensity === "big" ? 2200 : 1600;

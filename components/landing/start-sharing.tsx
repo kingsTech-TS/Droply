@@ -8,12 +8,15 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { DropZone } from "@/components/transfer/drop-zone";
 import { useDevice } from "@/hooks/use-device";
+import { useLocalStore } from "@/hooks/use-local-store";
+import { useRoomTheme } from "@/hooks/use-room-theme";
 import { userMessage } from "@/lib/api/errors";
 import { createRoom } from "@/lib/api/rooms";
 import { takeSharedPayload } from "@/lib/pwa/shared-inbox";
 import { setPendingFiles, setPendingText } from "@/lib/session/pending-files";
 import { saveSession, toStoredSession } from "@/lib/session/session-store";
 import type { RoomKind } from "@/types/room";
+import { createTheme, ThemePicker } from "./theme-picker";
 
 interface StartOptions {
   kind?: RoomKind;
@@ -28,6 +31,9 @@ export function StartSharing() {
   const { device, commitName } = useDevice();
   const [busy, setBusy] = useState(false);
   const handledShare = useRef(false);
+  const theme = useLocalStore(createTheme);
+  // Preview the chosen theme on this page; the room keeps it.
+  useRoomTheme(theme);
 
   const start = async (files: File[], options: StartOptions = {}) => {
     if (busy) return;
@@ -42,6 +48,7 @@ export function StartSharing() {
         },
         undefined,
         options.kind ?? "standard",
+        options.speedTest ? "default" : theme,
       );
       saveSession(toStoredSession(session));
       setPendingFiles(files);
@@ -67,6 +74,7 @@ export function StartSharing() {
   return (
     <div className="space-y-3">
       <DropZone onFiles={(files) => void start(files)} disabled={busy} title={busy ? "Creating your room…" : "Drop files here"} />
+      <ThemePicker value={theme} onChange={(t) => createTheme.set(t)} disabled={busy} />
       <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
         <Button variant="link" onClick={() => void start([])} disabled={busy}>
           Create an empty room to receive

@@ -124,3 +124,28 @@ describe("parseServerMessage", () => {
     expect(parseServerMessage(new ArrayBuffer(4))).toBeNull();
   });
 });
+
+describe("createRoom with a theme", () => {
+  const device = { device_name: "Laptop", device_type: "laptop" as const };
+
+  it("sends the theme, and leaves it out for the default theme", async () => {
+    const fetchImpl = vi.fn(async () => response(201, { room_id: "rm_1" }));
+    const client = new ApiClient("http://api.test", fetchImpl as unknown as typeof fetch);
+    await createRoom(device, client, "event", "birthday");
+    await createRoom(device, client);
+    const bodies = fetchImpl.mock.calls.map((call) => JSON.parse(String((call as unknown as [string, RequestInit])[1].body)));
+    expect(bodies[0]).toEqual({ device, kind: "event", theme: "birthday" });
+    expect(bodies[1]).toEqual({ device, kind: "standard" });
+  });
+
+  it("falls back to an unthemed room on servers that reject the field", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(response(422, envelope("VALIDATION_ERROR")))
+      .mockResolvedValueOnce(response(201, { room_id: "rm_2" }));
+    const client = new ApiClient("http://api.test", fetchImpl as unknown as typeof fetch);
+    const session = await createRoom(device, client, "standard", "ocean");
+    expect(session.room_id).toBe("rm_2");
+    expect(JSON.parse(String((fetchImpl.mock.calls[1] as [string, RequestInit])[1].body))).toEqual({ device, kind: "standard" });
+  });
+});

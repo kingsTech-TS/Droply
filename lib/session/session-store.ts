@@ -1,6 +1,6 @@
 // The device token is a bearer secret. It lives in sessionStorage (per tab, survives a
 // reload) and is never put in a URL or a log.
-import type { RoomSession } from "@/types/room";
+import { ROOM_THEMES, type RoomSession, type RoomTheme } from "@/types/room";
 
 const PREFIX = "droply:session:";
 
@@ -18,6 +18,8 @@ export interface StoredSession {
   token: string;
   tokenExpiresAt: string;
   mode: SessionMode;
+  /** The room's theme when this device entered, so the room is themed while it loads. */
+  theme?: RoomTheme;
 }
 
 export function toStoredSession(session: RoomSession, mode: SessionMode = "standard"): StoredSession {
@@ -29,6 +31,7 @@ export function toStoredSession(session: RoomSession, mode: SessionMode = "stand
     token: session.device_token,
     tokenExpiresAt: session.token_expires_at,
     mode,
+    theme: session.room.theme,
   };
 }
 
@@ -41,6 +44,7 @@ function isStoredSession(value: unknown): value is StoredSession {
   if (!fields) return false;
   // Sessions saved before modes existed are standard rooms.
   if (v.mode !== "my-devices" && v.mode !== "room-link") v.mode = "standard";
+  if (!(ROOM_THEMES as readonly unknown[]).includes(v.theme)) delete v.theme;
   return true;
 }
 

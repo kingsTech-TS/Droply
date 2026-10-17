@@ -5,16 +5,28 @@ import type {
   RoomKind,
   RoomSession,
   RoomSettingsUpdate,
+  RoomTheme,
   RoomView,
 } from "@/types/room";
 import { apiClient, type ApiClient } from "./client";
+import { isApiError } from "./errors";
 
 export function createRoom(
   device: DeviceInfoIn,
   client: ApiClient = apiClient,
   kind: RoomKind = "standard",
+  theme: RoomTheme = "default",
 ): Promise<RoomSession> {
-  return client.request<RoomSession>("POST", "/rooms", { body: { device, kind } });
+  if (theme === "default") return client.request<RoomSession>("POST", "/rooms", { body: { device, kind } });
+  // A server that predates themes on create rejects the field (422): create without it.
+  return client
+    .request<RoomSession>("POST", "/rooms", { body: { device, kind, theme } })
+    .catch((error: unknown) => {
+      if (isApiError(error) && error.status === 422) {
+        return client.request<RoomSession>("POST", "/rooms", { body: { device, kind } });
+      }
+      throw error;
+    });
 }
 
 /** Joins by code. Sending a still-valid token for the same room returns the same device. */

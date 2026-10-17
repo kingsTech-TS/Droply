@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { Header } from "@/components/layout/header";
 import { JoinCodeForm } from "@/components/landing/join-code-form";
 import { RoomSessionProvider } from "@/hooks/use-room-session";
+import { useRoomTheme } from "@/hooks/use-room-theme";
 import { RoomSession } from "@/lib/session/room-session";
 import { loadSession } from "@/lib/session/session-store";
 import { RoomView } from "./room-view";
@@ -18,6 +19,10 @@ type State =
 /** Creates the room's services on mount and disposes them on unmount. */
 export function RoomScreen({ roomId }: { roomId: string }) {
   const [state, setState] = useState<State>({ kind: "loading" });
+  // While the room opens, use the theme saved when this device entered (the live room
+  // view takes over once it renders).
+  const [savedTheme] = useState(() => (typeof window === "undefined" ? null : (loadSession(roomId)?.theme ?? null)));
+  useRoomTheme(state.kind === "loading" ? savedTheme : null);
 
   useEffect(() => {
     // The room session is an external system (WebSocket, peer connections), so it is

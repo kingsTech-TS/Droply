@@ -58,6 +58,192 @@
   --ring: oklch(0.67 0.19 280);
 }
 
+/* Room themes (lib/fun/themes.ts). Set on <html> while a themed room is open, so the
+   header, dialogs and toasts follow too. Generated with contrast checks: text on
+   primary, accent and cards stays at WCAG AA (4.5:1) in light and dark mode. */
+[data-room-theme="party"] {
+  --background: oklch(0.985 0.012 328);
+  --primary: oklch(0.52 0.22 328);
+  --primary-foreground: oklch(0.99 0.01 328);
+  --ring: oklch(0.52 0.22 328);
+  --accent: oklch(0.945 0.04 328);
+  --accent-foreground: oklch(0.38 0.14 328);
+  --electric: oklch(0.58 0.17 290);
+  --border: oklch(0.91 0.02 328);
+  --muted: oklch(0.955 0.012 328);
+  --secondary: oklch(0.955 0.014 328);
+}
+.dark[data-room-theme="party"] {
+  --background: oklch(0.16 0.025 328);
+  --card: oklch(0.205 0.028 328);
+  --popover: oklch(0.205 0.028 328);
+  --primary: oklch(0.72 0.187 328);
+  --primary-foreground: oklch(0.17 0.04 328);
+  --ring: oklch(0.72 0.187 328);
+  --accent: oklch(0.3 0.06 328);
+  --accent-foreground: oklch(0.9 0.07 328);
+  --electric: oklch(0.74 0.15 290);
+  --border: oklch(0.31 0.03 328);
+  --muted: oklch(0.25 0.025 328);
+  --secondary: oklch(0.26 0.03 328);
+}
+[data-room-theme="birthday"] {
+  --background: oklch(0.985 0.012 0);
+  --primary: oklch(0.53 0.19 0);
+  --primary-foreground: oklch(0.99 0.01 0);
+  --ring: oklch(0.53 0.19 0);
+  --accent: oklch(0.945 0.04 0);
+  --accent-foreground: oklch(0.38 0.14 0);
+  --electric: oklch(0.58 0.17 25);
+  --border: oklch(0.91 0.02 0);
+  --muted: oklch(0.955 0.012 0);
+  --secondary: oklch(0.955 0.014 0);
+}
+.dark[data-room-theme="birthday"] {
+  --background: oklch(0.16 0.025 0);
+  --card: oklch(0.205 0.028 0);
+  --popover: oklch(0.205 0.028 0);
+  --primary: oklch(0.74 0.162 0);
+  --primary-foreground: oklch(0.17 0.04 0);
+  --ring: oklch(0.74 0.162 0);
+  --accent: oklch(0.3 0.06 0);
+  --accent-foreground: oklch(0.9 0.07 0);
+  --electric: oklch(0.74 0.15 25);
+  --border: oklch(0.31 0.03 0);
+  --muted: oklch(0.25 0.025 0);
+  --secondary: oklch(0.26 0.03 0);
+}
+[data-room-theme="wedding"] {
+  --background: oklch(0.985 0.012 70);
+  --primary: oklch(0.5 0.1 70);
+  --primary-foreground: oklch(0.99 0.01 70);
+  --ring: oklch(0.5 0.1 70);
+  --accent: oklch(0.945 0.04 70);
+  --accent-foreground: oklch(0.38 0.1 70);
+  --electric: oklch(0.58 0.1 20);
+  --border: oklch(0.91 0.02 70);
+  --muted: oklch(0.955 0.012 70);
+  --secondary: oklch(0.955 0.014 70);
+}
+.dark[data-room-theme="wedding"] {
+  --background: oklch(0.16 0.025 70);
+  --card: oklch(0.205 0.028 70);
+  --popover: oklch(0.205 0.028 70);
+  --primary: oklch(0.8 0.085 70);
+  --primary-foreground: oklch(0.17 0.04 70);
+  --ring: oklch(0.8 0.085 70);
+  --accent: oklch(0.3 0.06 70);
+  --accent-foreground: oklch(0.9 0.07 70);
+  --electric: oklch(0.74 0.1 20);
+  --border: oklch(0.31 0.03 70);
+  --muted: oklch(0.25 0.025 70);
+  --secondary: oklch(0.26 0.03 70);
+}
+[data-room-theme="gaming"] {
+  --background: oklch(0.985 0.012 152);
+  --primary: oklch(0.5 0.16 152);
+  --primary-foreground: oklch(0.99 0.01 152);
+  --ring: oklch(0.5 0.16 152);
+  --accent: oklch(0.945 0.04 152);
+  --accent-foreground: oklch(0.38 0.14 152);
+  --electric: oklch(0.58 0.16 195);
+  --border: oklch(0.91 0.02 152);
+  --muted: oklch(0.955 0.012 152);
+  --secondary: oklch(0.955 0.014 152);
+}
+.dark[data-room-theme="gaming"] {
+  --background: oklch(0.16 0.025 152);
+  --card: oklch(0.205 0.028 152);
+  --popover: oklch(0.205 0.028 152);
+  --primary: oklch(0.76 0.136 152);
+  --primary-foreground: oklch(0.17 0.04 152);
+  --ring: oklch(0.76 0.136 152);
+  --accent: oklch(0.3 0.06 152);
+  --accent-foreground: oklch(0.9 0.07 152);
+  --electric: oklch(0.74 0.15 195);
+  --border: oklch(0.31 0.03 152);
+  --muted: oklch(0.25 0.025 152);
+  --secondary: oklch(0.26 0.03 152);
+}
+[data-room-theme="study"] {
+  --background: oklch(0.985 0.012 245);
+  --primary: oklch(0.5 0.16 245);
+  --primary-foreground: oklch(0.99 0.01 245);
+  --ring: oklch(0.5 0.16 245);
+  --accent: oklch(0.945 0.04 245);
+  --accent-foreground: oklch(0.38 0.14 245);
+  --electric: oklch(0.58 0.16 270);
+  --border: oklch(0.91 0.02 245);
+  --muted: oklch(0.955 0.012 245);
+  --secondary: oklch(0.955 0.014 245);
+}
+.dark[data-room-theme="study"] {
+  --background: oklch(0.16 0.025 245);
+  --card: oklch(0.205 0.028 245);
+  --popover: oklch(0.205 0.028 245);
+  --primary: oklch(0.73 0.136 245);
+  --primary-foreground: oklch(0.17 0.04 245);
+  --ring: oklch(0.73 0.136 245);
+  --accent: oklch(0.3 0.06 245);
+  --accent-foreground: oklch(0.9 0.07 245);
+  --electric: oklch(0.74 0.15 270);
+  --border: oklch(0.31 0.03 245);
+  --muted: oklch(0.25 0.025 245);
+  --secondary: oklch(0.26 0.03 245);
+}
+[data-room-theme="ocean"] {
+  --background: oklch(0.985 0.012 220);
+  --primary: oklch(0.5 0.13 220);
+  --primary-foreground: oklch(0.99 0.01 220);
+  --ring: oklch(0.5 0.13 220);
+  --accent: oklch(0.945 0.04 220);
+  --accent-foreground: oklch(0.38 0.13 220);
+  --electric: oklch(0.58 0.13 190);
+  --border: oklch(0.91 0.02 220);
+  --muted: oklch(0.955 0.012 220);
+  --secondary: oklch(0.955 0.014 220);
+}
+.dark[data-room-theme="ocean"] {
+  --background: oklch(0.16 0.025 220);
+  --card: oklch(0.205 0.028 220);
+  --popover: oklch(0.205 0.028 220);
+  --primary: oklch(0.75 0.111 220);
+  --primary-foreground: oklch(0.17 0.04 220);
+  --ring: oklch(0.75 0.111 220);
+  --accent: oklch(0.3 0.06 220);
+  --accent-foreground: oklch(0.9 0.07 220);
+  --electric: oklch(0.74 0.13 190);
+  --border: oklch(0.31 0.03 220);
+  --muted: oklch(0.25 0.025 220);
+  --secondary: oklch(0.26 0.03 220);
+}
+[data-room-theme="sunset"] {
+  --background: oklch(0.985 0.012 38);
+  --primary: oklch(0.53 0.17 38);
+  --primary-foreground: oklch(0.99 0.01 38);
+  --ring: oklch(0.53 0.17 38);
+  --accent: oklch(0.945 0.04 38);
+  --accent-foreground: oklch(0.38 0.14 38);
+  --electric: oklch(0.58 0.17 355);
+  --border: oklch(0.91 0.02 38);
+  --muted: oklch(0.955 0.012 38);
+  --secondary: oklch(0.955 0.014 38);
+}
+.dark[data-room-theme="sunset"] {
+  --background: oklch(0.16 0.025 38);
+  --card: oklch(0.205 0.028 38);
+  --popover: oklch(0.205 0.028 38);
+  --primary: oklch(0.75 0.145 38);
+  --primary-foreground: oklch(0.17 0.04 38);
+  --ring: oklch(0.75 0.145 38);
+  --accent: oklch(0.3 0.06 38);
+  --accent-foreground: oklch(0.9 0.07 38);
+  --electric: oklch(0.74 0.15 355);
+  --border: oklch(0.31 0.03 38);
+  --muted: oklch(0.25 0.025 38);
+  --secondary: oklch(0.26 0.03 38);
+}
+
 @theme inline {
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
@@ -104,6 +290,13 @@
   }
   :focus-visible {
     @apply outline-2 outline-offset-2 outline-ring;
+  }
+  /* Themed rooms: a soft glow of the theme colors behind the page. */
+  html[data-room-theme] body {
+    background-image:
+      radial-gradient(60rem 28rem at 10% -8rem, color-mix(in oklch, var(--primary) 14%, transparent), transparent 70%),
+      radial-gradient(50rem 24rem at 95% -6rem, color-mix(in oklch, var(--electric) 12%, transparent), transparent 70%);
+    background-repeat: no-repeat;
   }
 }
 

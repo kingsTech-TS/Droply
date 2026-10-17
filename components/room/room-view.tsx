@@ -42,6 +42,7 @@ import { useWakeLock } from "@/hooks/use-wake-lock";
 import { userMessage } from "@/lib/api/errors";
 import { preferences } from "@/lib/fun/prefs";
 import { THEME_STYLES } from "@/lib/fun/themes";
+import { useRoomTheme } from "@/hooks/use-room-theme";
 import { compressPhotos } from "@/lib/media/compress";
 import { pairing } from "@/lib/pairing/pairing";
 import { takePendingFiles, takePendingText } from "@/lib/session/pending-files";
@@ -134,6 +135,8 @@ export function RoomView() {
   const anyActive = transfers.items.some(isActive);
   const isHost = room.hostDeviceId === room.selfId;
   const theme = THEME_STYLES[room.theme];
+  const themed = room.theme !== "default";
+  useRoomTheme(room.status === "ended" ? null : room.theme);
 
   useWakeLock(anyActive);
   useLeaveWarning(anyActive);
@@ -343,19 +346,24 @@ export function RoomView() {
   return (
     <>
       <RoomHeader code={room.roomCode} isHost={isHost} transfersActive={anyActive} onLeave={leave} onCloseRoom={closeRoom} />
-      <div className={cn("h-1.5 w-full bg-gradient-to-r", theme.banner)} aria-hidden />
+      <div className={cn("w-full bg-gradient-to-r from-primary via-electric to-primary/30", themed ? "h-1.5" : "h-1 opacity-60")} aria-hidden />
       <main className="mx-auto w-full max-w-6xl flex-1 space-y-6 px-4 py-6 sm:px-6">
-        {room.theme !== "default" || room.kind === "event" || room.mode !== "standard" ? (
+        {themed ? (
+          <div className="flex items-center gap-4 overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/12 via-electric/8 to-transparent p-4 sm:p-5">
+            <span aria-hidden className="text-4xl drop-shadow-sm sm:text-5xl motion-safe:animate-[bounce_1s_ease-in-out_1]">
+              {theme.emoji}
+            </span>
+            <div className="min-w-0 space-y-1">
+              <p className="text-lg font-semibold tracking-tight text-primary sm:text-xl">{theme.label} room</p>
+              <p className="text-sm text-muted-foreground">{theme.tagline}</p>
+            </div>
+          </div>
+        ) : null}
+        {room.kind === "event" || room.mode !== "standard" ? (
           <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-            {room.theme !== "default" ? (
-              <span className="text-xl" aria-hidden>
-                {theme.emoji}
-              </span>
-            ) : null}
             {room.mode === "my-devices" ? <Badge variant="default">My devices</Badge> : null}
             {room.mode === "room-link" ? <Badge variant="default">Personal room</Badge> : null}
             {room.kind === "event" ? <Badge variant="electric">Event room · up to {room.maxDevices} devices</Badge> : null}
-            {room.theme !== "default" ? <span>{theme.label} room</span> : null}
           </p>
         ) : null}
         <ConnectionBanner room={room} onRetry={() => session.retryConnection()} />
