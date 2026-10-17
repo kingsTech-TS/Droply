@@ -3,6 +3,9 @@
 
 const WINDOW_MS = 3000;
 const MIN_ETA_DATA_MS = 2000;
+const HISTORY_INTERVAL_MS = 1000;
+/** Seconds of speed history kept for the live graph. */
+export const SPEED_HISTORY_LENGTH = 30;
 
 export class SpeedMeter {
   private samples: Array<{ t: number; bytes: number }> = [];
@@ -11,6 +14,9 @@ export class SpeedMeter {
   private baseBytes: number | null = null;
   private latestBytes = 0;
   private firstDataAt: number | null = null;
+  private peakSpeed: number | null = null;
+  private historyValues: number[] = [];
+  private lastHistoryAt = 0;
 
   constructor(private readonly now: () => number = () => performance.now()) {}
 
@@ -35,6 +41,29 @@ export class SpeedMeter {
     this.latestBytes = verifiedBytes;
     this.samples.push({ t, bytes: verifiedBytes });
     while (this.samples.length > 2 && this.samples[0]!.t < t - WINDOW_MS) this.samples.shift();
+    const speed = this.current;
+    if (speed !== null && t - this.lastHistoryAt >= HISTORY_INTERVAL_MS) {
+      this.lastHistoryAt = t;
+      this.historyValues = [...this.historyValues, speed].slice(-SPEED_HISTORY_LENGTH);
+      // Peak over a full window only, so a single burst of acks can't fake a record.
+      const first = this.samples[0];
+      if (first && t - first.t >= WINDOW_MS * 0.9) this.peakSpeed = Math.max(this.peakSpeed ?? 0, speed);
+    }
+  }
+
+  /** Highest current speed measured over a full window, or null. */
+  get peak(): number | null {
+    return this.peakSpeed;
+  }
+
+  /** About one sample per second of the current speed (bytes/s), oldest first. */
+  get history(): readonly number[] {
+    return this.historyValues;
+  }
+
+  /** Seconds spent actively transferring (excludes paused time). */
+  get activeSeconds(): number {
+    return (this.activeMs + (this.activeSince !== null ? this.now() - this.activeSince : 0)) / 1000;
   }
 
   /** Bytes per second over the last few seconds, or null without enough data. */

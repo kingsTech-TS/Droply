@@ -16,22 +16,24 @@ import type { DirectoryHandleLike } from "@/lib/storage/sinks/fs-access-sink";
 import type { SinkFactory } from "@/lib/storage/sinks/factory";
 import type { ChunkSink, SinkKind } from "@/lib/storage/sinks/sink";
 import { saveFile } from "@/lib/storage/save";
+import { DiscardSink } from "@/lib/storage/sinks/discard-sink";
+import { buildZip } from "@/lib/storage/zip";
 import { cleanOrphanedOpfsFiles } from "@/lib/storage/sinks/opfs-sink";
 import { Emitter, Store } from "@/lib/utils/emitter";
 import { sha256Hex } from "@/lib/utils/hash";
 import { randomId } from "@/lib/utils/id";
 import { logger } from "@/lib/utils/logger";
 import { capRanges, contiguousPrefixEnd, rangesFromIndexes } from "@/lib/utils/ranges";
-import { dedupeFileName, sanitizeFileName } from "@/lib/utils/sanitize-filename";
+import { dedupeFileName, sanitizeFileName, sanitizeFolderPath } from "@/lib/utils/sanitize-filename";
 import type { ClientMessage, TransferEvent } from "@/types/signaling";
 import type { ChunkRange, TransferConfigView, TransferCreate, TransferView } from "@/types/transfer";
 import { AdaptiveController, chooseChunkSize, defaultTuning } from "./adaptive-controller";
-import { chunkBounds, FileSource, totalChunks, type ByteSource } from "./chunk-manager";
+import { chunkBounds, FileSource, SyntheticSource, totalChunks, type ByteSource } from "./chunk-manager";
 import type { DataChannelTransport } from "./data-channel";
 import { FileReceiver } from "./file-receiver";
 import { FileSender } from "./file-sender";
 import { SpeedMeter } from "./progress";
-import { MAX_SLOT, type Ctl, type Frame } from "./protocol";
+import { MAX_SLOT, type Ctl, type Frame, type Reaction } from "./protocol";
 import { legKey, type LegRecord, type ResumeStore } from "./resume-manager";
 import { creationSlots, pickStartable, schedulerLimits, type Candidate } from "./scheduler";
 import { isTerminal, isUnfinishedOnServer, type LegStatus } from "./transfer-state";
@@ -51,6 +53,12 @@ export interface LegSnapshot {
   failureReason: string | null;
   /** The connection dropped and the transfer will resume on its own when possible. */
   autoResume: boolean;
+  /** Highest speed measured over a full window (bytes/s), for "top speed". */
+  peakSpeed: number | null;
+  /** About one sample per second of the current speed, for the live graph. */
+  speedHistory: readonly number[];
+  /** Seconds spent actively transferring (paused time excluded). */
+  activeSeconds: number;
 }
 
 export interface TransferSnapshot {
@@ -70,6 +78,34 @@ export interface TransferSnapshot {
   /** Outgoing after a reload: the user must select the same file again to resume. */
   needsReselect: boolean;
   error: string | null;
+  /** Folder path inside a sent folder ("photos/2026"), sanitized; null for single files. */
+  relativePath: string | null;
+  /** Outgoing: reactions recipients sent back. Incoming: the reaction this device sent. */
+  reactions: Reaction[];
+  /** Outgoing in this session: the File is still available to send again. */
+  canResend: boolean;
+}
+
+/** Emitted once per finished leg (sent to one device, or received). */
+export interface Completion {
+  direction: "outgoing" | "incoming";
+  batchId: string;
+  localId: string;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  peerId: string;
+  averageSpeed: number | null;
+  peakSpeed: number | null;
+  seconds: number;
+}
+
+export interface SpeedTestResult {
+  ok: boolean;
+  bytes: number;
+  seconds: number;
+  averageSpeed: number | null;
+  peakSpeed: number | null;
 }
 
 export interface IncomingRequest {
@@ -126,6 +162,8 @@ export interface TransferManagerOptions {
   mobile: boolean;
   deviceName: (deviceId: string) => string;
   maxActiveTransfers?: number;
+  /** Auto-accept from everyone (a "My devices" room: only paired devices can be in it). */
+  trustAll?: boolean;
 }
 
 // --- internal records ---------------------------------------------------------------
@@ -160,6 +198,10 @@ interface OutgoingRecord {
   digests: Map<number, string>;
   createdAt: number;
   error: string | null;
+  relativePath: string | null;
+  reactions: Reaction[];
+  /** The original File, kept (by reference) so it can be sent again this session. */
+  file: File | null;
 }
 
 interface IncomingRecord {
@@ -187,6 +229,8 @@ interface IncomingRecord {
   lastCheckpointAt: number;
   checkpointTimer: ReturnType<typeof setTimeout> | null;
   dismissed: boolean;
+  relativePath: string | null;
+  reaction: Reaction | null;
 }
 
 const PUBLISH_INTERVAL_MS = 200;
@@ -195,10 +239,21 @@ const CHECKPOINT_INTERVAL_MS = 2000;
 const REQUEST_GROUP_WINDOW_MS = 400;
 const MIME_PATTERN = /^[A-Za-z0-9][\w.+-]*\/[\w.+-]+$/;
 const SENDABLE: ReadonlySet<LegStatus> = new Set(["accepted", "connecting", "retrying", "transferring"]);
+/** Speed tests are synthetic; cap them so a peer can't be flooded. */
+export const MAX_SPEED_TEST_BYTES = 256 * 1024 * 1024;
+
+/** The folder part of a file picked inside a folder ("photos/2026"), or null. */
+function folderPathOf(file: File): string | null {
+  const relative = (file as File & { webkitRelativePath?: string }).webkitRelativePath ?? "";
+  const parts = relative.split("/").slice(0, -1);
+  return parts.length > 0 ? parts.join("/") : null;
+}
 
 export class TransferManager {
   readonly store = new Store<TransfersSnapshot>({ items: [], requests: [], trustedSenders: [] });
   readonly notices = new Emitter<{ notice: Notice }>();
+  /** Finished legs (for history, records and celebrations). */
+  readonly completions = new Emitter<{ completion: Completion }>();
 
   private readonly outgoing = new Map<string, OutgoingRecord>();
   private readonly outgoingByTransfer = new Map<string, OutgoingRecord>();
@@ -271,46 +326,145 @@ export class TransferManager {
 
   /** Queues files for the given recipients. Returns how many files were accepted. */
   send(files: readonly File[], recipientIds: readonly string[]): number {
-    const recipients = [...new Set(recipientIds)].slice(0, this.config.max_recipients);
+    const recipients = [...new Set(recipientIds)];
     if (recipients.length === 0 || files.length === 0) return 0;
     const empty = files.filter((f) => f.size === 0).length;
     if (empty > 0) {
       this.notify({ kind: "warning", message: empty === 1 ? "Empty files can't be sent." : `${empty} empty files were skipped.` });
     }
+    // The backend allows `max_recipients` per transfer; larger audiences (event rooms)
+    // get one transfer per group, all in the same batch.
+    const groupSize = Math.max(1, this.config.max_recipients);
+    const groups: string[][] = [];
+    for (let i = 0; i < recipients.length; i += groupSize) groups.push(recipients.slice(i, i + groupSize));
     const batchId = randomId("b_");
-    const throughput = this.slowestThroughput(recipients);
     let count = 0;
     for (const file of files) {
       if (file.size === 0) continue;
-      const chunkSize = chooseChunkSize(throughput, {
-        recommended: this.config.recommended_chunk_size,
-        min: this.config.min_chunk_size,
-        max: this.config.max_chunk_size,
-      });
-      const record: OutgoingRecord = {
-        kind: "outgoing",
-        localId: randomId("f_"),
-        transferId: null,
-        batchId,
-        order: this.order++,
-        source: new FileSource(file),
-        lastModified: file.lastModified,
-        fileName: file.name || "file",
-        fileSize: file.size,
-        mimeType: MIME_PATTERN.test(file.type) ? file.type.toLowerCase() : "application/octet-stream",
-        chunkSize,
-        totalChunks: totalChunks(file.size, chunkSize),
-        legs: new Map(recipients.map((id) => [id, this.newOutLeg(id, "queued")])),
-        digests: new Map(),
-        createdAt: Date.now(),
-        error: null,
-      };
-      this.outgoing.set(record.localId, record);
       count += 1;
+      for (const group of groups) {
+        const chunkSize = chooseChunkSize(this.slowestThroughput(group), {
+          recommended: this.config.recommended_chunk_size,
+          min: this.config.min_chunk_size,
+          max: this.config.max_chunk_size,
+        });
+        const record: OutgoingRecord = {
+          kind: "outgoing",
+          localId: randomId("f_"),
+          transferId: null,
+          batchId,
+          order: this.order++,
+          source: new FileSource(file),
+          lastModified: file.lastModified,
+          fileName: file.name || "file",
+          fileSize: file.size,
+          mimeType: MIME_PATTERN.test(file.type) ? file.type.toLowerCase() : "application/octet-stream",
+          chunkSize,
+          totalChunks: totalChunks(file.size, chunkSize),
+          legs: new Map(group.map((id) => [id, this.newOutLeg(id, "queued")])),
+          digests: new Map(),
+          createdAt: Date.now(),
+          error: null,
+          relativePath: folderPathOf(file),
+          reactions: [],
+          file,
+        };
+        this.outgoing.set(record.localId, record);
+      }
     }
     this.publish();
     void this.pumpCreate();
     return count;
+  }
+
+  /** The original File of an item sent this session (for "Send again"), or null. */
+  fileFor(localId: string): File | null {
+    return this.outgoing.get(localId)?.file ?? null;
+  }
+
+  /** Rough time to send `bytes` to these peers, from speeds measured earlier this session. */
+  estimateSeconds(bytes: number, peerIds: readonly string[]): number | null {
+    const speed = this.slowestThroughput(peerIds);
+    return speed && speed > 0 ? bytes / speed : null;
+  }
+
+  /** A recipient reacted to a file we sent. */
+  addReaction(transferId: string, fromPeerId: string, emoji: Reaction): void {
+    const record = this.outgoingByTransfer.get(transferId);
+    if (!record || !record.legs.has(fromPeerId)) return;
+    record.reactions = [...record.reactions, emoji].slice(-20);
+    this.publish();
+  }
+
+  /** Records the reaction this device sent for a received file. */
+  markReacted(transferId: string, emoji: Reaction): string | null {
+    const record = this.incoming.get(transferId);
+    if (!record) return null;
+    record.reaction = emoji;
+    this.publish();
+    return record.senderId;
+  }
+
+  /**
+   * Measures the link to a peer with synthetic data (nothing is saved, no server transfer).
+   * The receiver discards the bytes after verifying them.
+   */
+  async runSpeedTest(
+    peerId: string,
+    bytes: number,
+    onProgress?: (verifiedBytes: number, speed: number | null) => void,
+  ): Promise<SpeedTestResult> {
+    const size = Math.min(Math.max(1, Math.floor(bytes)), MAX_SPEED_TEST_BYTES);
+    this.options.peers.acquire(peerId);
+    try {
+      const transport = await this.waitForTransport(peerId);
+      if (!transport) return { ok: false, bytes: 0, seconds: 0, averageSpeed: null, peakSpeed: null };
+      const chunkSize = 4 * 1024 * 1024;
+      const meter = new SpeedMeter();
+      meter.setActive(true);
+      const slot = this.allocateSlot(peerId);
+      const sender = new FileSender({
+        transport,
+        slot,
+        transferId: randomId("st_"),
+        source: new SyntheticSource(size, Date.now() & 0xffff),
+        chunkSize,
+        totalChunks: totalChunks(size, chunkSize),
+        frameSize: this.options.peers.frameSizeFor(peerId),
+        window: this.tuning.window,
+        test: true,
+        onProgress: (verified) => {
+          meter.update(verified);
+          onProgress?.(verified, meter.current);
+        },
+      });
+      this.slotsFor(this.outSlots, peerId).set(slot, sender);
+      const result = await sender.run();
+      this.outSlots.get(peerId)?.delete(slot);
+      meter.setActive(false);
+      const seconds = meter.activeSeconds;
+      const ok = result.kind === "done";
+      if (ok && seconds > 0) this.peerThroughput.set(peerId, size / seconds);
+      return { ok, bytes: sender.verifiedBytes, seconds, averageSpeed: meter.average, peakSpeed: meter.peak };
+    } finally {
+      this.options.peers.release(peerId);
+    }
+  }
+
+  private waitForTransport(peerId: string, timeoutMs = 20_000): Promise<DataChannelTransport | null> {
+    const ready = this.options.peers.transportFor(peerId);
+    if (ready) return Promise.resolve(ready);
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => finish(null), timeoutMs);
+      const off = this.options.peers.events.on("transport", ({ peerId: id, transport }) => {
+        if (id === peerId) finish(transport);
+      });
+      const finish = (transport: DataChannelTransport | null) => {
+        clearTimeout(timer);
+        off();
+        resolve(transport);
+      };
+    });
   }
 
   /** Re-selects the file for a transfer restored after a reload. Returns false on mismatch. */
@@ -414,6 +568,49 @@ export class TransferManager {
       this.notify({ kind: "error", message: "Couldn't save the file. Please try again." });
     }
     this.publish();
+  }
+
+  /** Received files that are ready to save, optionally from one batch. */
+  readyFiles(batchId?: string): Array<{ localId: string; path: string; file: File; batchId: string }> {
+    const out: Array<{ localId: string; path: string; file: File; batchId: string }> = [];
+    for (const record of this.incoming.values()) {
+      if (!record.finalFile || record.dismissed || (batchId && record.batchId !== batchId)) continue;
+      const path = record.relativePath ? `${record.relativePath}/${record.fileName}` : record.fileName;
+      out.push({ localId: record.transferId, path, file: record.finalFile, batchId: record.batchId });
+    }
+    return out;
+  }
+
+  /** Saves several received files as one .zip (keeps folder structure). Call from a click. */
+  async saveAsZip(batchId: string | undefined, onProgress?: (done: number, total: number) => void): Promise<boolean> {
+    const files = this.readyFiles(batchId);
+    if (files.length === 0) return false;
+    const taken = new Set<string>();
+    const entries = files.map((f) => {
+      const path = dedupeFileName(f.path, taken);
+      taken.add(path.toLowerCase());
+      return { path, file: f.file };
+    });
+    const zip = await buildZip(entries, onProgress);
+    const result = await saveFile(zip, `droply-${new Date().toISOString().slice(0, 10)}.zip`);
+    return result === "saved";
+  }
+
+  /** Files in this room that may be images or videos, for the album (sniffed by the UI). */
+  mediaCandidates(): Array<{ localId: string; direction: "outgoing" | "incoming"; name: string; file: Blob; peerId: string }> {
+    const out: Array<{ localId: string; direction: "outgoing" | "incoming"; name: string; file: Blob; peerId: string }> = [];
+    const seen = new Set<File>();
+    for (const record of this.outgoing.values()) {
+      if (!record.file || seen.has(record.file)) continue;
+      seen.add(record.file);
+      out.push({ localId: record.localId, direction: "outgoing", name: record.fileName, file: record.file, peerId: [...record.legs.keys()][0] ?? "" });
+    }
+    for (const record of this.incoming.values()) {
+      if (record.finalFile && !record.dismissed) {
+        out.push({ localId: record.transferId, direction: "incoming", name: record.fileName, file: record.finalFile, peerId: record.senderId });
+      }
+    }
+    return out;
   }
 
   // --- controls (both directions) ---------------------------------------------------
@@ -759,6 +956,18 @@ export class TransferManager {
       const average = leg.meter.average;
       if (average) this.peerThroughput.set(leg.deviceId, average);
       leg.verifiedBytes = record.fileSize;
+      this.completions.emit("completion", {
+        direction: "outgoing",
+        batchId: record.batchId,
+        localId: record.localId,
+        fileName: record.fileName,
+        fileSize: record.fileSize,
+        mimeType: record.mimeType,
+        peerId: leg.deviceId,
+        averageSpeed: average,
+        peakSpeed: leg.meter.peak,
+        seconds: leg.meter.activeSeconds,
+      });
     }
     if (status === "rejected" && previous === "pending") {
       this.notify({ kind: "info", message: `${this.options.deviceName(leg.deviceId)} declined ${record.fileName}.` });
@@ -855,6 +1064,7 @@ export class TransferManager {
       totalChunks: record.totalChunks,
       frameSize: this.options.peers.frameSizeFor(leg.deviceId),
       window: this.tuning.window,
+      path: record.relativePath,
       knownDigests: record.digests,
       onDigest: (index, digest) => {
         if (record.digests.get(index) === digest) return;
@@ -985,6 +1195,9 @@ export class TransferManager {
       digests: await this.options.resume.getDigests("send", view.transfer_id),
       createdAt: stored.createdAt,
       error: null,
+      relativePath: null,
+      reactions: [],
+      file: null,
     };
     for (const legView of view.recipients) {
       const leg = this.newOutLeg(legView.device_id, legView.status);
@@ -1026,6 +1239,8 @@ export class TransferManager {
       lastCheckpointAt: 0,
       checkpointTimer: null,
       dismissed: false,
+      relativePath: null,
+      reaction: null,
     };
     this.incoming.set(view.transfer_id, record);
     if (record.status === "pending") this.addToRequestGroup(record);
@@ -1039,7 +1254,7 @@ export class TransferManager {
     const key = last && now - last.at < REQUEST_GROUP_WINDOW_MS ? last.key : randomId("rq_");
     this.lastRequestKey.set(record.senderId, { key, at: now });
     record.batchId = key;
-    if (this.trusted.has(record.senderId)) {
+    if (this.trusted.has(record.senderId) || this.options.trustAll) {
       void this.acceptIncoming(record, null);
       return;
     }
@@ -1135,6 +1350,10 @@ export class TransferManager {
   }
 
   private async onIncomingOpen(peerId: string, transport: DataChannelTransport, ctl: Extract<Ctl, { t: "file_open" }>): Promise<void> {
+    if (ctl.test) {
+      this.receiveSpeedTest(peerId, transport, ctl);
+      return;
+    }
     const record = this.incoming.get(ctl.transferId);
     const file = record?.view.file;
     const valid =
@@ -1166,6 +1385,7 @@ export class TransferManager {
       return;
     }
     record.receiver?.stop("paused");
+    record.relativePath = sanitizeFolderPath(ctl.path);
 
     try {
       if (!record.sink) {
@@ -1176,6 +1396,7 @@ export class TransferManager {
           totalChunks: ctl.totalChunks,
           directory: record.directory,
           preferredKind: record.sinkKind,
+          folderPath: record.relativePath,
         });
         if (record.sinkKind && record.sinkKind !== sink.kind) {
           // A different storage tier than before (e.g. after a reload): start over.
@@ -1244,6 +1465,31 @@ export class TransferManager {
     this.publish();
   }
 
+  /** Receives a peer's speed test: verified like a real file, then discarded. */
+  private receiveSpeedTest(peerId: string, transport: DataChannelTransport, ctl: Extract<Ctl, { t: "file_open" }>): void {
+    const busy = [...(this.inSlots.get(peerId)?.values() ?? [])].some((r) => r.isSpeedTest);
+    if (ctl.size > MAX_SPEED_TEST_BYTES || busy) {
+      transport.sendCtl({ t: "file_close", slot: ctl.slot, role: "receiver", reason: "error" });
+      return;
+    }
+    const receiver = new FileReceiver({
+      transport,
+      slot: ctl.slot,
+      transferId: ctl.transferId,
+      size: ctl.size,
+      chunkSize: ctl.chunkSize,
+      totalChunks: ctl.totalChunks,
+      window: this.tuning.window,
+      sink: new DiscardSink(),
+      digests: new Map(),
+      persistDigest: async () => {},
+      isSpeedTest: true,
+    });
+    this.slotsFor(this.inSlots, peerId).set(ctl.slot, receiver);
+    this.notify({ kind: "info", message: `Speed test with ${this.options.deviceName(peerId)}…` });
+    void receiver.start().finally(() => this.inSlots.get(peerId)?.delete(ctl.slot));
+  }
+
   private async completeIncoming(record: IncomingRecord): Promise<void> {
     record.verification = "verified";
     record.save = "preparing";
@@ -1253,6 +1499,18 @@ export class TransferManager {
       const file = await record.sink?.finalize();
       record.finalFile = file ?? null;
       record.save = file ? "ready" : "saved";
+      this.completions.emit("completion", {
+        direction: "incoming",
+        batchId: record.batchId,
+        localId: record.transferId,
+        fileName: record.fileName,
+        fileSize: record.view.file.file_size,
+        mimeType: record.view.file.mime_type,
+        peerId: record.senderId,
+        averageSpeed: record.meter.average,
+        peakSpeed: record.meter.peak,
+        seconds: record.meter.activeSeconds,
+      });
     } catch (error) {
       logger.error("transfer", "finalizing file failed", String(error));
       record.save = "none";
@@ -1535,11 +1793,17 @@ export class TransferManager {
           etaSeconds: leg.meter.eta(record.fileSize),
           failureReason: leg.failureReason,
           autoResume: leg.autoResume,
+          peakSpeed: leg.meter.peak,
+          speedHistory: leg.meter.history,
+          activeSeconds: leg.meter.activeSeconds,
         })),
         verification: "pending",
         save: "none",
         needsReselect: record.source === null && [...record.legs.values()].some((l) => !isTerminal(l.status)),
         error: record.error,
+        relativePath: record.relativePath,
+        reactions: record.reactions,
+        canResend: record.file !== null,
       });
     }
     for (const record of this.incoming.values()) {
@@ -1565,12 +1829,18 @@ export class TransferManager {
             etaSeconds: record.meter.eta(file.file_size),
             failureReason: record.failureReason,
             autoResume: false,
+            peakSpeed: record.meter.peak,
+            speedHistory: record.meter.history,
+            activeSeconds: record.meter.activeSeconds,
           },
         ],
         verification: record.verification,
         save: record.save,
         needsReselect: false,
         error: null,
+        relativePath: record.relativePath,
+        reactions: record.reaction ? [record.reaction] : [],
+        canResend: false,
       });
     }
     items.sort((a, b) => b.createdAt - a.createdAt);

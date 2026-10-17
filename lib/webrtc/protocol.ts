@@ -64,7 +64,13 @@ export type Ctl =
       size: number;
       chunkSize: number;
       totalChunks: number;
+      /** Folder path relative to the selected folder ("photos/2026"); untrusted. */
+      path?: string;
+      /** Speed test: synthetic bytes, discarded on receipt, no server transfer. */
+      test?: boolean;
     }
+  // Small app messages between peers (text drops, chat, reactions, pairing).
+  | { t: "app"; m: AppMessage }
   // Receiver → sender: ready, these chunks are already stored, and at most `window`
   // unacknowledged chunks may be in flight (receive-side memory bound).
   | { t: "file_ready"; slot: number; have: ChunkRange[]; window: number }
@@ -83,10 +89,54 @@ export type Ctl =
   // Sent before an intentional close so the other side does not try to recover.
   | { t: "bye" };
 
+export const REACTIONS = ["👍", "❤️", "😂", "🔥", "🎉", "🙏"] as const;
+export type Reaction = (typeof REACTIONS)[number];
+export const MAX_TEXT_MESSAGE = 64 * 1024;
+export const MAX_CHAT_MESSAGE = 2000;
+
+export type AppMessage =
+  | { kind: "text"; id: string; text: string }
+  | { kind: "chat"; id: string; text: string }
+  | { kind: "reaction"; transferId: string; emoji: Reaction }
+  // Pairing ("My devices"): the requester shares its group key over the encrypted channel.
+  | { kind: "pair_request"; key: string; name: string }
+  | { kind: "pair_accept"; name: string }
+  | { kind: "pair_decline" };
+
 type Obj = Record<string, unknown>;
 
 const isInt = (v: unknown, min = 0, max = Number.MAX_SAFE_INTEGER): v is number =>
   typeof v === "number" && Number.isInteger(v) && v >= min && v <= max;
+const isStr = (v: unknown, max: number, min = 0): v is string =>
+  typeof v === "string" && v.length >= min && v.length <= max;
+const isId = (v: unknown): v is string => typeof v === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(v);
+
+function parseApp(value: unknown): AppMessage | null {
+  if (typeof value !== "object" || value === null) return null;
+  const m = value as Obj;
+  switch (m.kind) {
+    case "text":
+      return isId(m.id) && isStr(m.text, MAX_TEXT_MESSAGE, 1) ? { kind: "text", id: m.id, text: m.text } : null;
+    case "chat":
+      return isId(m.id) && isStr(m.text, MAX_CHAT_MESSAGE, 1) ? { kind: "chat", id: m.id, text: m.text } : null;
+    case "reaction":
+      return typeof m.transferId === "string" &&
+        m.transferId.length <= 70 &&
+        (REACTIONS as readonly unknown[]).includes(m.emoji)
+        ? { kind: "reaction", transferId: m.transferId, emoji: m.emoji as Reaction }
+        : null;
+    case "pair_request":
+      return typeof m.key === "string" && /^[A-Za-z0-9_-]{22,128}$/.test(m.key) && isStr(m.name, 64, 1)
+        ? { kind: "pair_request", key: m.key, name: m.name }
+        : null;
+    case "pair_accept":
+      return isStr(m.name, 64, 1) ? { kind: "pair_accept", name: m.name } : null;
+    case "pair_decline":
+      return { kind: "pair_decline" };
+    default:
+      return null;
+  }
+}
 const isSlot = (v: unknown): v is number => isInt(v, 0, MAX_SLOT);
 const isHex64 = (v: unknown): v is string => typeof v === "string" && /^[0-9a-f]{64}$/.test(v);
 
@@ -119,7 +169,9 @@ export function parseCtl(raw: string): Ctl | null {
         isInt(m.size, 1) &&
         isInt(m.chunkSize, 1) &&
         isInt(m.totalChunks, 1) &&
-        m.totalChunks === Math.ceil(m.size / m.chunkSize)
+        m.totalChunks === Math.ceil(m.size / m.chunkSize) &&
+        (m.path === undefined || isStr(m.path, 1024)) &&
+        (m.test === undefined || typeof m.test === "boolean")
         ? {
             t: "file_open",
             slot: m.slot,
@@ -127,8 +179,14 @@ export function parseCtl(raw: string): Ctl | null {
             size: m.size,
             chunkSize: m.chunkSize,
             totalChunks: m.totalChunks,
+            ...(typeof m.path === "string" && m.path ? { path: m.path } : {}),
+            ...(m.test === true ? { test: true } : {}),
           }
         : null;
+    case "app": {
+      const app = parseApp(m.m);
+      return app ? { t: "app", m: app } : null;
+    }
     case "file_ready":
       return isSlot(m.slot) && isRanges(m.have) && isInt(m.window, 1, 64)
         ? { t: "file_ready", slot: m.slot, have: m.have, window: m.window }

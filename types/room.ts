@@ -3,6 +3,10 @@ import type { DeviceInfoIn, DeviceView } from "./device";
 import type { TransferConfigView } from "./transfer";
 
 export type RoomStatus = "open" | "closed" | "expired";
+/** `event` rooms hold more devices (parties, classes). */
+export type RoomKind = "standard" | "event";
+export const ROOM_THEMES = ["default", "party", "birthday", "wedding", "gaming", "study", "ocean", "sunset"] as const;
+export type RoomTheme = (typeof ROOM_THEMES)[number];
 
 export interface IceServer {
   urls: string[];
@@ -18,6 +22,30 @@ export interface IceConfig {
 
 export interface RoomCreateRequest {
   device: DeviceInfoIn;
+  kind?: RoomKind;
+}
+
+/** Host-only settings; omitted fields are unchanged. */
+export interface RoomSettingsUpdate {
+  discoverable?: boolean;
+  theme?: RoomTheme;
+}
+
+export interface RendezvousRequest {
+  key: string;
+  device: DeviceInfoIn;
+}
+
+/** A discoverable room created from the same network as this device. */
+export interface NearbyRoom {
+  room_id: string;
+  room_code: string;
+  host_name: string;
+  host_device_type: DeviceView["device_type"];
+  device_count: number;
+  kind: RoomKind;
+  theme: RoomTheme;
+  expires_at: string;
 }
 
 export interface RoomJoinRequest {
@@ -36,6 +64,9 @@ export interface RoomView {
   max_devices: number;
   host_device_id: string;
   devices: DeviceView[];
+  kind: RoomKind;
+  discoverable: boolean;
+  theme: RoomTheme;
 }
 
 /** Returned on room create/join. Holds the device token: keep it private. */
@@ -50,4 +81,9 @@ export interface RoomSession {
   room: RoomView;
   ice_servers: IceServer[];
   transfer_config: TransferConfigView;
+}
+
+export interface RendezvousSession extends RoomSession {
+  /** True if this call opened a new room for the key. */
+  created: boolean;
 }

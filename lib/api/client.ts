@@ -2,7 +2,7 @@ import { env } from "@/config/env";
 import { logger } from "@/lib/utils/logger";
 import { ApiError, toErrorCode } from "./errors";
 
-export type HttpMethod = "GET" | "POST" | "DELETE";
+export type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
 
 export interface RequestOptions {
   body?: unknown;

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { LogOutIcon } from "lucide-react";
 import { Logo } from "@/components/layout/logo";
+import { PreferencesButton } from "@/components/layout/preferences-dialog";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import {
   AlertDialog,
@@ -45,6 +46,7 @@ export function RoomHeader({ code, isHost, transfersActive, onLeave, onCloseRoom
             <LogOutIcon aria-hidden />
             <span className="hidden sm:inline">Leave</span>
           </Button>
+          <PreferencesButton />
           <ThemeToggle />
         </div>
       </div>

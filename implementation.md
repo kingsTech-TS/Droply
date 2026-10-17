@@ -676,10 +676,10 @@ Phases 1–9 are implemented. Phase 10 (cloud fallback) is not.
 | Check | Result |
 |---|---|
 | `bun run typecheck`, `bun run lint`, `bun run build` | Clean |
-| `bun run test` (Vitest) | 236 tests: unit (all 121 state-machine pairs vs the backend's `ALLOWED`), WebRTC (fake `RTCPeerConnection`: offer/answer/ICE, glare, early candidates, restart), pipeline (backpressure bound, credit window, corruption resend, resume gaps, pause, interruption), end-to-end `TransferManager` pairs against an in-memory backend (multi-file, multi-recipient, decline, per-device limit, pause/resume, link drop + auto-resume, cancel), components |
+| `bun run test` (Vitest) | 261 tests (236 originally, plus the idea.txt features): unit (all 121 state-machine pairs vs the backend's `ALLOWED`), WebRTC (fake `RTCPeerConnection`: offer/answer/ICE, glare, early candidates, restart), pipeline (backpressure bound, credit window, corruption resend, resume gaps, pause, interruption), end-to-end `TransferManager` pairs against an in-memory backend (multi-file, multi-recipient, decline, per-device limit, pause/resume, link drop + auto-resume, cancel), components |
 | Memory | 64 MiB and 512 MiB synthetic transfers peak at 54 MiB and 42 MiB of live buffers: bounded, independent of file size |
 | `bun run check-contract` against the real backend | 37/37: WS schema types match exactly, rooms, join, TURN, relay, the full transfer lifecycle, checkpoints, roles, close |
-| Playwright in real Chrome (desktop + Pixel 7 viewport) | Create room → join via link → accept → 9 MB over a real DataChannel → "File verified" → download's SHA-256 matches; decline; invalid code; no horizontal scroll |
+| Playwright in real Chrome (desktop + Pixel 7 viewport) | 14 tests. Create room → join via link → accept → 9 MB over a real DataChannel → "File verified" → download's SHA-256 matches; decline; invalid code; no horizontal scroll; text drop, chat and speed test; pairing then meeting without a code, with scheduled auto-send; personal room link |
 
 Throughput on real devices still needs measuring. On the development machine, even a raw
 DataChannel loopback in headless Chrome was capped at ~1.6 MB/s by the environment, and Droply
@@ -699,9 +699,31 @@ matched that ceiling. Use `/dev/benchmark` on real hardware to tune the defaults
    CLI couldn't reach `ui.shadcn.com` from the build machine.
 4. **`exactOptionalPropertyTypes`** is not enabled; it conflicts with Radix and shadcn prop
    types. Every other strict flag is on.
-5. **Folders** are flattened (§9 #6). File names are de-duplicated as `name (1).ext`.
+5. **Folders** now keep their structure: `file_open.path` carries the relative path over the
+   DataChannel, sanitized on receipt (`sanitizeFolderPath`). File names are still
+   de-duplicated as `name (1).ext`.
 6. **Direct-to-disk** uses one folder picker per incoming batch (`showDirectoryPicker`), not
    one save dialog per file. Folder access doesn't survive a reload, so those chunks restart
    in browser storage.
 7. **Not implemented:** cloud fallback (Phase 10) and a per-device "peer mode" on the
    benchmark page. The benchmark runs in loopback only.
+
+### idea.txt features
+
+Implemented across both repositories (see the README's feature list):
+
+| Area | Frontend | Backend |
+|---|---|---|
+| My devices, personal room link | `lib/pairing/`, `/my-devices`, `/r/[key]`, pairing over the DataChannel (`pair_request`/`pair_accept`), `trustAll` auto-accept, scheduled send | `POST /api/v1/rendezvous`: HMAC of the key → current room, CAS claim |
+| Nearby rooms | `NearbyRooms` (polls every 8 s), host switch | `GET /api/v1/rooms/nearby`, opt-in `discoverable`, keyed IP hash |
+| Event rooms, themes | Host settings, banner, delivery roster, recipient groups of `max_recipients` | `kind: event` (50 devices), `theme`, `PATCH /rooms/{id}`, `room_updated` |
+| Text, chat, reactions | `{t:"app"}` control messages, `PeerMessenger` | none (peer-to-peer only) |
+| Speed | `SpeedMeter` peak/history, gauge, sparkline, summary, speed test (`file_open.test`, `DiscardSink`) | none |
+| Media, folders, zip | magic-byte sniffing, album, `file_open.path`, STORE/ZIP64 writer, photo compression | none |
+| PWA | `app/manifest.ts` share target, `public/sw.js`, generated icons | none |
+| Local only | history, records, badges, stats, preferences, fun names | none |
+| Trust | security code from DTLS fingerprints, relay-only retry, `/privacy` | none |
+
+Not built: translations (needs the target languages), a browser extension (separate store
+product) and the encrypted "leave it for later" cloud copy (needs R2 enabled and a backend
+model for offline recipients).

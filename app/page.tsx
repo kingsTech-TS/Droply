@@ -1,7 +1,10 @@
+import { Suspense } from "react";
 import { LockIcon, MonitorSmartphoneIcon, QrCodeIcon, RocketIcon, SendIcon, SmartphoneIcon, ZapIcon } from "lucide-react";
 import { Footer } from "@/components/layout/footer";
 import { Header } from "@/components/layout/header";
 import { JoinCodeForm } from "@/components/landing/join-code-form";
+import { MyDevices } from "@/components/landing/my-devices";
+import { NearbyRooms } from "@/components/landing/nearby-rooms";
 import { StartSharing } from "@/components/landing/start-sharing";
 import { brand } from "@/config/brand";
 
@@ -44,7 +47,13 @@ export default function Home() {
             <h1 className="text-4xl font-semibold tracking-tight text-balance sm:text-5xl">{brand.tagline}</h1>
             <p className="text-lg text-muted-foreground text-balance">Transfer files directly between your devices.</p>
           </div>
-          <StartSharing />
+          <div className="mb-6 space-y-4">
+            <NearbyRooms />
+            <MyDevices />
+          </div>
+          <Suspense fallback={null}>
+            <StartSharing />
+          </Suspense>
           <div className="my-8 flex items-center gap-3 text-xs uppercase tracking-wider text-muted-foreground" aria-hidden>
             <span className="h-px flex-1 bg-border" />
             or

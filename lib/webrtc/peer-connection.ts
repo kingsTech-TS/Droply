@@ -25,6 +25,7 @@ import { parseStats, qualityFromStats, type ConnectionQuality, type LinkStats } 
 import { DataChannelTransport, type DataChannelLike } from "./data-channel";
 import type { IceServerProvider } from "./ice";
 import { PROTOCOL_VERSION } from "./protocol";
+import { securityCode } from "./security-code";
 
 export type LinkStatus = "idle" | "connecting" | "connected" | "recovering" | "failed" | "closed";
 
@@ -43,6 +44,10 @@ export interface LinkInfo {
   attempts: number;
   /** Bytes per frame agreed with the peer (min of both sides). */
   frameSize: number;
+  /** Four emoji both people can compare (derived from both DTLS fingerprints). */
+  securityCode: string | null;
+  /** The user asked to force a TURN relay for this link. */
+  relayOnly: boolean;
 }
 
 type Events = {
@@ -89,6 +94,7 @@ export class PeerLink {
   private attempts = 0;
   private closed = false;
   private remoteMaxFrame: number | null = null;
+  private relayOnly = false;
   private lastStats: LinkStats | null = null;
 
   constructor(private readonly options: PeerLinkOptions) {
@@ -106,6 +112,8 @@ export class PeerLink {
       remoteCandidateType: null,
       attempts: 0,
       frameSize: options.localMaxFrame,
+      securityCode: null,
+      relayOnly: false,
     });
   }
 
@@ -217,7 +225,8 @@ export class PeerLink {
 
   private async createConnection(connectionId: string): Promise<void> {
     this.teardownConnection();
-    const config = await this.options.ice.getConfiguration();
+    const base = await this.options.ice.getConfiguration();
+    const config: RTCConfiguration = this.relayOnly ? { ...base, iceTransportPolicy: "relay" } : base;
     if (this.closed) return;
     const create = this.options.createPeerConnection ?? ((c: RTCConfiguration) => new RTCPeerConnection(c));
     const pc = create(config);
@@ -282,6 +291,7 @@ export class PeerLink {
       this.clearRecoveryTimers();
       this.patch({ status: "connected", channelState: "open", attempts: 0 });
       this.events.emit("transport", transport);
+      void this.computeSecurityCode();
       void this.refreshStats();
     };
     transport.events.on("open", onOpen);
@@ -415,9 +425,25 @@ export class PeerLink {
     }, wait);
   }
 
-  /** Lets the link try again after it reported "failed" (the user pressed Retry). */
-  async retry(): Promise<void> {
+  private async computeSecurityCode(): Promise<void> {
+    const local = this.pc?.localDescription?.sdp;
+    const remote = this.pc?.remoteDescription?.sdp;
+    if (!local || !remote) return;
+    try {
+      this.patch({ securityCode: await securityCode(local, remote) });
+    } catch {
+      // Web Crypto unavailable: no code, the connection is still encrypted.
+    }
+  }
+
+  /**
+   * Lets the link try again after it reported "failed" (the user pressed Retry).
+   * `relayOnly` forces a TURN relay, for networks where direct attempts keep failing.
+   */
+  async retry(relayOnly = false): Promise<void> {
     if (this.closed) return;
+    this.relayOnly = relayOnly;
+    this.patch({ relayOnly });
     this.attempts = 0;
     this.clearRecoveryTimers();
     await this.createConnection(this.nextConnectionId());

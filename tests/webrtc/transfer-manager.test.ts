@@ -14,6 +14,11 @@ import type { FakeChannelOptions } from "../mocks/rtc";
 
 const KiB = 1024;
 
+function inFolder(file: File, relativePath: string): File {
+  Object.defineProperty(file, "webkitRelativePath", { value: relativePath });
+  return file;
+}
+
 function makeFile(name: string, size: number, seed = 1): File {
   const bytes = new Uint8Array(size);
   for (let i = 0; i < size; i += 1) bytes[i] = (i * 31 + seed * 7 + (i >> 9)) & 0xff;
@@ -33,7 +38,16 @@ interface Device {
 
 const managers: TransferManager[] = [];
 
-function world(ids: string[], options: { channel?: FakeChannelOptions; backendLimit?: number; maxActive?: number } = {}) {
+interface WorldOptions {
+  channel?: FakeChannelOptions;
+  backendLimit?: number;
+  maxActive?: number;
+  /** Device ids that auto-accept everything ("My devices" rooms). */
+  trustAll?: string[];
+  maxRecipients?: number;
+}
+
+function world(ids: string[], options: WorldOptions = {}) {
   const backend = new FakeBackend(options.backendLimit ?? 20);
   const network = new FakeNetwork(options.channel ?? {});
   const devices = new Map<string, Device>();
@@ -42,7 +56,7 @@ function world(ids: string[], options: { channel?: FakeChannelOptions; backendLi
     const manager = new TransferManager({
       selfId: id,
       roomId: "rm_test",
-      config: TEST_CONFIG,
+      config: options.maxRecipients ? { ...TEST_CONFIG, max_recipients: options.maxRecipients } : TEST_CONFIG,
       api: backend.apiFor(id),
       peers: network.node(id),
       send: backend.wsFor(id),
@@ -51,6 +65,7 @@ function world(ids: string[], options: { channel?: FakeChannelOptions; backendLi
       mobile: false,
       deviceName: (d) => d,
       maxActiveTransfers: options.maxActive,
+      trustAll: options.trustAll?.includes(id) ?? false,
     });
     manager.notices.on("notice", (n) => notices.push(n));
     backend.connect(id, (event) => manager.handleEvent(event));
@@ -157,8 +172,72 @@ describe("TransferManager end to end", () => {
     const files = Array.from({ length: 7 }, (_, i) => makeFile(`f${i}.bin`, 20 * KiB, i));
     a.manager.send(files, [b.id]);
     await until(() => incoming(b).filter((i) => i.save === "ready").length === 7, 15000, "all 7 received");
+    // The sender marks a leg completed when the final acknowledgement arrives, which can be
+    // just after the receiver has finished saving.
+    await until(() => outgoing(a).every((i) => i.legs[0]?.status === "completed"), 5000, "sender legs completed");
     expect(backend.maxUnfinishedSeen).toBeLessThanOrEqual(2);
-    expect(outgoing(a).every((i) => i.legs[0]?.status === "completed")).toBe(true);
+  });
+
+  it("runs a speed test with synthetic data that is verified and discarded", async () => {
+    const { get } = world(["dv_aaaaaaaaaaaaaaaaaaaa", "dv_bbbbbbbbbbbbbbbbbbbb"]);
+    const a = get("dv_aaaaaaaaaaaaaaaaaaaa");
+    const b = get("dv_bbbbbbbbbbbbbbbbbbbb");
+    const progress: number[] = [];
+    const result = await a.manager.runSpeedTest(b.id, 9 * 1024 * KiB, (bytes) => progress.push(bytes));
+    expect(result.ok).toBe(true);
+    expect(result.bytes).toBe(9 * 1024 * KiB);
+    expect(progress.at(-1)).toBe(9 * 1024 * KiB);
+    // No transfer, no request, nothing saved on either side.
+    expect(items(a)).toHaveLength(0);
+    expect(items(b)).toHaveLength(0);
+    expect(requests(b)).toHaveLength(0);
+    // The measured speed feeds the send-time estimate.
+    expect(a.manager.estimateSeconds(1024 * KiB, [b.id])).toBeGreaterThan(0);
+  });
+
+  it("keeps folder structure, sanitizes paths and auto-accepts between paired devices", async () => {
+    const { get } = world(["dv_aaaaaaaaaaaaaaaaaaaa", "dv_bbbbbbbbbbbbbbbbbbbb"], { trustAll: ["dv_bbbbbbbbbbbbbbbbbbbb"] });
+    const a = get("dv_aaaaaaaaaaaaaaaaaaaa");
+    const b = get("dv_bbbbbbbbbbbbbbbbbbbb");
+    const nested = inFolder(makeFile("beach.jpg", 40 * KiB), "Holiday/2026/beach.jpg");
+    const hostile = inFolder(makeFile("x.bin", 10 * KiB, 2), "../../etc/x.bin");
+    a.manager.send([nested, hostile], [b.id]);
+    // No accept click: b trusts everyone in this room.
+    await until(() => incoming(b).filter((i) => i.save === "ready").length === 2, 8000, "both received");
+    expect(requests(b)).toHaveLength(0);
+    const byName = new Map(incoming(b).map((i) => [i.fileName, i]));
+    expect(byName.get("beach.jpg")?.relativePath).toBe("Holiday/2026");
+    expect(byName.get("x.bin")?.relativePath).toBe("etc");
+  });
+
+  it("records reactions on both sides", async () => {
+    const { get } = world(["dv_aaaaaaaaaaaaaaaaaaaa", "dv_bbbbbbbbbbbbbbbbbbbb", "dv_cccccccccccccccccccc"]);
+    const a = get("dv_aaaaaaaaaaaaaaaaaaaa");
+    const b = get("dv_bbbbbbbbbbbbbbbbbbbb");
+    const c = get("dv_cccccccccccccccccccc");
+    a.manager.send([makeFile("song.mp3", 30 * KiB)], [b.id]);
+    await acceptAll(b);
+    await until(() => incoming(b)[0]?.save === "ready", 8000, "received");
+    const transferId = incoming(b)[0]!.transferId!;
+    expect(b.manager.markReacted(transferId, "🔥")).toBe(a.id);
+    expect(incoming(b)[0]!.reactions).toEqual(["🔥"]);
+    a.manager.addReaction(transferId, b.id, "🔥");
+    // A device that wasn't a recipient can't react.
+    a.manager.addReaction(transferId, c.id, "😂");
+    expect(outgoing(a)[0]!.reactions).toEqual(["🔥"]);
+  });
+
+  it("splits large audiences into transfers of at most max_recipients", async () => {
+    const ids = ["dv_aaaaaaaaaaaaaaaaaaaa", "dv_bbbbbbbbbbbbbbbbbbbb", "dv_cccccccccccccccccccc", "dv_dddddddddddddddddddd"];
+    const { get } = world(ids, { maxRecipients: 2, trustAll: ids.slice(1) });
+    const a = get(ids[0]!);
+    expect(a.manager.send([makeFile("poster.png", 20 * KiB)], ids.slice(1))).toBe(1);
+    const groups = outgoing(a);
+    expect(groups.map((g) => g.legs.length).sort()).toEqual([1, 2]);
+    expect(new Set(groups.map((g) => g.batchId)).size).toBe(1);
+    for (const id of ids.slice(1)) {
+      await until(() => incoming(get(id))[0]?.save === "ready", 8000, `${id} received`);
+    }
   });
 
   it("pauses and resumes from the receiver's gaps without restarting", async () => {

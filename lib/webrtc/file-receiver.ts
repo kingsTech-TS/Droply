@@ -36,6 +36,8 @@ export interface ReceiverOptions {
   onProgress?: (verifiedBytes: number, ranges: ChunkRange[]) => void;
   /** Called when the file is complete and its root digest matched. */
   onVerified?: () => void;
+  /** Synthetic speed-test data (discarded). */
+  isSpeedTest?: boolean;
 }
 
 interface Assembly {
@@ -60,6 +62,10 @@ export class FileReceiver {
     this.done = new Promise((resolve) => {
       this.resolveDone = resolve;
     });
+  }
+
+  get isSpeedTest(): boolean {
+    return this.options.isSpeedTest === true;
   }
 
   get ranges(): ChunkRange[] {

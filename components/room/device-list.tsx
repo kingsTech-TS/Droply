@@ -3,17 +3,17 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import type { LinkInfo } from "@/lib/webrtc/peer-connection";
 import type { DeviceView } from "@/types/device";
-import { DeviceCard } from "./device-card";
+import { DeviceCard, type DeviceCardActions } from "./device-card";
 
 export interface DeviceListProps {
   devices: DeviceView[];
   selfId: string;
   links: Readonly<Record<string, LinkInfo>>;
-  onSendTo?: (deviceId: string) => void;
-  onRetry?: (deviceId: string) => void;
+  actionsFor?: (deviceId: string) => DeviceCardActions;
+  pairedNames?: ReadonlySet<string>;
 }
 
-export function DeviceList({ devices, selfId, links, onSendTo, onRetry }: DeviceListProps) {
+export function DeviceList({ devices, selfId, links, actionsFor, pairedNames }: DeviceListProps) {
   const reduceMotion = useReducedMotion();
   const others = devices.filter((d) => d.device_id !== selfId).sort((a, b) => a.joined_at.localeCompare(b.joined_at));
   const self = devices.find((d) => d.device_id === selfId);
@@ -43,8 +43,8 @@ export function DeviceList({ devices, selfId, links, onSendTo, onRetry }: Device
               <DeviceCard
                 device={device}
                 link={links[device.device_id]}
-                onSend={onSendTo ? () => onSendTo(device.device_id) : undefined}
-                onRetry={onRetry ? () => onRetry(device.device_id) : undefined}
+                paired={pairedNames?.has(device.device_name) ?? false}
+                {...(actionsFor ? actionsFor(device.device_id) : {})}
               />
             </motion.li>
           ))}

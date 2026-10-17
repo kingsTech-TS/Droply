@@ -1,8 +1,12 @@
 "use client";
 
-import { ChevronDownIcon, QrCodeIcon } from "lucide-react";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import type { ReactNode } from "react";
+import { ChevronDownIcon, MaximizeIcon, QrCodeIcon, Share2Icon } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { useIsClient } from "@/hooks/use-is-client";
+import { brand } from "@/config/brand";
 import { QrCode } from "./qr-code";
 import { RoomCode } from "./room-code";
 import { RoomCountdown } from "./room-countdown";
@@ -13,10 +17,21 @@ export interface RoomSharePanelProps {
   expiresAt: number | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onPresent: () => void;
+  /** Host-only settings (theme, discoverability). */
+  settings?: ReactNode;
 }
 
 /** Room code, QR code and expiry. Collapsible once other devices have joined. */
-export function RoomSharePanel({ code, joinUrl, expiresAt, open, onOpenChange }: RoomSharePanelProps) {
+export function RoomSharePanel({ code, joinUrl, expiresAt, open, onOpenChange, onPresent, settings }: RoomSharePanelProps) {
+  const canShare = useIsClient() && typeof navigator.share === "function";
+  const invite = async () => {
+    try {
+      await navigator.share({ title: `Join my ${brand.name} room`, text: `Join my ${brand.name} room with code ${code}`, url: joinUrl });
+    } catch {
+      // The user closed the share sheet.
+    }
+  };
   return (
     <Card className="overflow-hidden">
       <Collapsible open={open} onOpenChange={onOpenChange}>
@@ -40,7 +55,20 @@ export function RoomSharePanel({ code, joinUrl, expiresAt, open, onOpenChange }:
             <p className="max-w-xs text-center text-sm text-muted-foreground">
               Scan this QR code with another device, or open the link and enter the code.
             </p>
+            <div className="flex flex-wrap justify-center gap-2">
+              {canShare ? (
+                <Button variant="secondary" size="sm" onClick={() => void invite()}>
+                  <Share2Icon aria-hidden />
+                  Invite
+                </Button>
+              ) : null}
+              <Button variant="outline" size="sm" onClick={onPresent}>
+                <MaximizeIcon aria-hidden />
+                Present
+              </Button>
+            </div>
             <RoomCountdown expiresAt={expiresAt} />
+            {settings ? <div className="w-full border-t pt-4">{settings}</div> : null}
           </div>
         </CollapsibleContent>
       </Collapsible>

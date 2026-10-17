@@ -12,6 +12,7 @@ interface WritableFileHandle {
 
 export interface DirectoryHandleLike {
   getFileHandle(name: string, options?: { create?: boolean }): Promise<unknown>;
+  getDirectoryHandle?(name: string, options?: { create?: boolean }): Promise<DirectoryHandleLike>;
   removeEntry(name: string): Promise<void>;
 }
 
@@ -33,19 +34,37 @@ export async function pickDirectory(): Promise<DirectoryHandleLike | null> {
   }
 }
 
-/** Writes each chunk at its offset directly into a file the user chose. No double disk usage. */
+/**
+ * Writes each chunk at its offset directly into a file the user chose. No double disk usage.
+ * `folderPath` (already sanitized) recreates a sent folder's structure inside that folder.
+ */
 export class FsAccessSink implements ChunkSink {
   readonly kind = "fs-access" as const;
   private writable: Promise<WritableFileStream> | null = null;
+  private target: Promise<DirectoryHandleLike> | null = null;
 
   constructor(
     private readonly directory: DirectoryHandleLike,
     readonly fileName: string,
+    private readonly folderPath: string | null = null,
   ) {}
+
+  private folder(): Promise<DirectoryHandleLike> {
+    this.target ??= (async () => {
+      let dir = this.directory;
+      for (const segment of this.folderPath?.split("/") ?? []) {
+        if (!dir.getDirectoryHandle) break;
+        dir = await dir.getDirectoryHandle(segment, { create: true });
+      }
+      return dir;
+    })();
+    return this.target;
+  }
 
   private stream(): Promise<WritableFileStream> {
     this.writable ??= (async () => {
-      const handle = (await this.directory.getFileHandle(this.fileName, { create: true })) as WritableFileHandle;
+      const dir = await this.folder();
+      const handle = (await dir.getFileHandle(this.fileName, { create: true })) as WritableFileHandle;
       return handle.createWritable({ keepExistingData: true });
     })();
     return this.writable;
@@ -74,6 +93,7 @@ export class FsAccessSink implements ChunkSink {
       this.writable = null;
       await stream.abort().catch(() => undefined);
     }
-    await this.directory.removeEntry(this.fileName).catch(() => undefined);
+    const dir = await this.folder().catch(() => this.directory);
+    await dir.removeEntry(this.fileName).catch(() => undefined);
   }
 }

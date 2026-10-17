@@ -39,6 +39,8 @@ const link = (partial: Partial<LinkInfo>): LinkInfo => ({
   remoteCandidateType: "host",
   attempts: 0,
   frameSize: 65536,
+  securityCode: "🐙 🚀 🍕 🌵",
+  relayOnly: false,
   ...partial,
 });
 
@@ -63,6 +65,9 @@ function item(partial: Partial<TransferSnapshot> = {}, leg: Partial<TransferSnap
         etaSeconds: 6,
         failureReason: null,
         autoResume: false,
+        peakSpeed: 112_000_000,
+        speedHistory: [70_000_000, 80_000_000, 87_400_000],
+        activeSeconds: 26,
         ...leg,
       },
     ],
@@ -70,6 +75,9 @@ function item(partial: Partial<TransferSnapshot> = {}, leg: Partial<TransferSnap
     save: "none",
     needsReselect: false,
     error: null,
+    relativePath: null,
+    reactions: [],
+    canResend: true,
     ...partial,
   };
 }
@@ -154,7 +162,17 @@ describe("TransferProgress", () => {
       <TransferProgress
         fileName="video.mp4"
         showRates
-        progress={{ verifiedBytes: 2_300_000_000, totalBytes: 2_800_000_000, fraction: 2.3 / 2.8, speed: 87_400_000, averageSpeed: null, etaSeconds: 6 }}
+        progress={{
+          verifiedBytes: 2_300_000_000,
+          totalBytes: 2_800_000_000,
+          fraction: 2.3 / 2.8,
+          speed: 87_400_000,
+          averageSpeed: null,
+          etaSeconds: 6,
+          peakSpeed: 112_000_000,
+          speedHistory: [60_000_000, 87_400_000],
+          activeSeconds: 26,
+        }}
       />,
     );
     const bar = screen.getByRole("progressbar", { name: "video.mp4 progress" });

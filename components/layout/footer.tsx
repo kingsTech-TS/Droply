@@ -8,9 +8,15 @@ export function Footer() {
         <p>
           {brand.name}. {brand.secondaryTagline}
         </p>
-        <nav aria-label="Footer" className="flex gap-4">
+        <nav aria-label="Footer" className="flex flex-wrap gap-x-4 gap-y-2">
           <Link href="/#how-it-works" className="hover:text-foreground">
             How it works
+          </Link>
+          <Link href="/speed-test" className="hover:text-foreground">
+            Speed test
+          </Link>
+          <Link href="/privacy" className="hover:text-foreground">
+            Privacy
           </Link>
           <Link href="/about" className="hover:text-foreground">
             About

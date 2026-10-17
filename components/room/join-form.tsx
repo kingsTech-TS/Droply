@@ -3,6 +3,7 @@
 import { useId, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { DicesIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,11 +15,11 @@ import { MAX_DEVICE_NAME } from "@/lib/device/device-name";
 import { findSessionByCode, saveSession, toStoredSession } from "@/lib/session/session-store";
 import { formatRoomCode } from "@/lib/utils/format";
 import { isValidRoomCode, normalizeRoomCode } from "@/lib/utils/room-code";
-import { DeviceIcon, DEVICE_LABEL } from "./device-icon";
+import { DeviceAvatar } from "./device-avatar";
 
 export function JoinForm({ initialCode }: { initialCode: string }) {
   const router = useRouter();
-  const { device, name, setName, commitName } = useDevice();
+  const { device, name, setName, shuffleName, commitName } = useDevice();
   const [code, setCode] = useState(() => normalizeRoomCode(initialCode));
   const [error, setError] = useState<{ message: string; fatal: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -80,15 +81,7 @@ export function JoinForm({ initialCode }: { initialCode: string }) {
           <div className="space-y-2">
             <Label htmlFor={nameId}>Your device name</Label>
             <div className="flex items-center gap-2">
-              {device ? (
-                <span
-                  className="inline-flex size-11 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground"
-                  title={DEVICE_LABEL[device.type]}
-                >
-                  <DeviceIcon type={device.type} />
-                  <span className="sr-only">{DEVICE_LABEL[device.type]}</span>
-                </span>
-              ) : null}
+              {device ? <DeviceAvatar name={name} type={device.type} className="size-11" /> : null}
               <Input
                 id={nameId}
                 value={name}
@@ -97,6 +90,9 @@ export function JoinForm({ initialCode }: { initialCode: string }) {
                 autoComplete="off"
                 required
               />
+              <Button type="button" variant="outline" size="icon" onClick={shuffleName} aria-label="Pick a random fun name">
+                <DicesIcon aria-hidden />
+              </Button>
             </div>
             <p className="text-xs text-muted-foreground">Other devices in the room will see this name.</p>
           </div>

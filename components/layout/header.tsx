@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Logo } from "./logo";
+import { PreferencesButton } from "./preferences-dialog";
 import { ThemeToggle } from "./theme-toggle";
 
 export function Header({ children }: { children?: ReactNode }) {
@@ -18,6 +19,12 @@ export function Header({ children }: { children?: ReactNode }) {
                 How it works
               </Link>
               <Link
+                href="/history"
+                className="hidden min-h-11 items-center rounded-lg px-3 text-sm text-muted-foreground hover:text-foreground sm:inline-flex"
+              >
+                History
+              </Link>
+              <Link
                 href="/about"
                 className="inline-flex min-h-11 items-center rounded-lg px-3 text-sm text-muted-foreground hover:text-foreground"
               >
@@ -25,6 +32,7 @@ export function Header({ children }: { children?: ReactNode }) {
               </Link>
             </>
           )}
+          <PreferencesButton />
           <ThemeToggle />
         </nav>
       </div>

@@ -29,7 +29,7 @@ const SERVER_TYPES = [
   "transfer_request", "transfer_created", "transfer_accepted", "transfer_rejected", "transfer_connecting",
   "transfer_started", "transfer_paused", "transfer_resumed", "transfer_completed", "transfer_failed",
   "transfer_retrying", "transfer_cancelled", "transfer_expired", "transfer_checkpoint", "transfer_fallback_ready",
-  "ping", "pong", "error", "room_closed", "room_expired",
+  "ping", "pong", "error", "room_updated", "room_closed", "room_expired",
 ] as const satisfies readonly ServerMessageType[];
 
 let failures = 0;

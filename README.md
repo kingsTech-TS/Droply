@@ -99,6 +99,46 @@ Requirements: [prompt.md](prompt.md) · Design and decisions: [implementation.md
 - Keeps the screen awake during transfers (where supported) and warns before closing a tab
   with an active transfer.
 
+**Coming back: your devices and your room**
+
+- **My devices:** pair your own devices once (a device's menu → *Add to My devices*). Later,
+  *Connect my devices* on each puts them in the same room without a code, and files between
+  them are accepted automatically. You can also queue files with *Send when my device
+  connects*; they go out as soon as a paired device joins (keep the tab open).
+- **Personal room link** (`/r/<key>`): a permanent link that always opens your room. Reset it
+  any time; the old link stops working.
+- **Nearby rooms (opt-in):** a host can make a room visible to devices on the same network,
+  which see it on the home page and join with one tap.
+- **Install as an app (PWA)** with *Share to Droply* in the phone's share sheet. Shared files
+  and text are kept on the device by the service worker and open in a new room.
+- **History** (`/history`) and **Stats & badges** (`/stats`): recent transfers, personal speed
+  records, a monthly "Wrapped" summary and badges. All stored only on this device.
+- Background notifications for incoming files, texts and pairing requests, and keyboard
+  shortcuts (paste files or text, Ctrl+O, number keys pick recipients, `?` for help).
+
+**Fun and social**
+
+- Playful default device names with emoji avatars ("🦦 Sneaky Otter"), shuffled with one tap.
+- Celebrations: confetti, synthesized sounds, haptics and a file "flight path" animation, with
+  a toast that can share a result card. All optional, and off with reduced motion.
+- Live speed: a big speed number, a 30-second graph, a speedometer for large files, total
+  speed for the batch, speed per recipient, and an end summary ("2.8 GB in 35 s · average 79
+  MB/s · top 112 MB/s").
+- **Speed test** (`/speed-test`, or *Test speed* on any device): synthetic data over the real
+  connection, verified and thrown away.
+- **Text drop** and **room chat** over the encrypted DataChannel (the server never sees them),
+  and **reactions** (👍 ❤️ 😂 🔥 🎉 🙏) on received files.
+- **Event rooms** (up to 50 devices) with **themes**, a delivery roster for big audiences, a
+  full-screen *Present* QR code and *Invite* through the share sheet.
+- **Album** of received photos and videos, with previews only for files whose first bytes are
+  a real raster image or video (never SVG or HTML).
+- **Folders keep their structure** (sanitized paths), *Save all as .zip*, and *Send smaller
+  photos* to resize before sending.
+- **Security code:** four emoji derived from both DTLS fingerprints; compare them on both
+  screens to confirm nobody is in the middle. *Reconnect through relay* forces TURN when a
+  direct path keeps failing.
+- A transparency page (`/privacy`) lists exactly what the server sees and never sees.
+
 **Developer tools**
 
 - A diagnostics panel (`NEXT_PUBLIC_DEBUG=true`) shows peer and connection ids, connection and
@@ -317,16 +357,25 @@ throughput and memory benchmark.
 
 ```text
 app/                    routes
-├── page.tsx            /              home: drop zone, join by code, features
+├── page.tsx            /              home: drop zone, nearby rooms, my devices, join by code
 ├── join/[code]/        /join/CODE     join form (what the QR code opens)
 ├── room/[roomId]/      /room/ID       the transfer room
+├── r/[key]/            /r/KEY         personal room link
+├── my-devices/         /my-devices    paired devices and room link
+├── history/, stats/    /history       local history; /stats: Wrapped and badges
+├── speed-test/         /speed-test    device-to-device speed test
+├── privacy/            /privacy       what the server sees
+├── manifest.ts, icons/ PWA manifest (with share target) and generated icons
+├── share-target/       fallback for shares before the service worker is installed
 ├── about/              /about
 └── dev/benchmark/      /dev/benchmark (only when enabled)
 components/
-├── layout/             header, footer, theme provider and toggle, logo
-├── landing/            start sharing, join-by-code form
-├── room/               room screen and view, share panel, QR code, devices, banners
-├── transfer/           drop zone, send panel, incoming request, transfer cards
+├── layout/             header, footer, theme, preferences, service worker registration
+├── landing/            start sharing, join-by-code, nearby rooms, my devices, speed test
+├── room/               room view, share panel, devices, chat, text drop, album, dialogs
+├── transfer/           drop zone, send panel, transfer cards, speed graphics, media
+├── history/            history and stats views
+├── pairing/            my devices manager
 ├── dev/                diagnostics panel, benchmark
 └── ui/                 shadcn/ui primitives (Radix + Tailwind)
 config/                 brand.ts (product name), env.ts (validated settings)
@@ -337,7 +386,13 @@ lib/
 ├── storage/            IndexedDB, storage tiers (sinks), OPFS worker, saving files
 ├── session/            room session (owns all services), session store
 ├── device/             device detection and naming
-└── utils/              formatting, ranges, hashing, file-name sanitizing, backoff
+├── fun/                names, celebrations, themes, preferences
+├── history/            local history, records, badges, stats
+├── pairing/            pairing and room-link keys
+├── media/              magic-byte media sniffing, photo compression
+├── share/, pwa/        result cards, share-target inbox, app icon
+└── utils/              formatting, ranges, hashing, sanitizing, zip, local store
+public/sw.js            service worker (share target only, no caching)
 types/                  mirrors the backend's Pydantic models
 tests/                  unit/, webrtc/, components/, e2e/, mocks/
 scripts/                check-contract.ts
@@ -394,9 +449,10 @@ instead of failing. Transfers need a secure context (HTTPS or `localhost`).
 Implemented and verified:
 
 - lint, typecheck and production build are clean
-- 236 Vitest tests
-- 37/37 checks against the real backend
-- 8 Playwright tests in real Chrome
+- 261 Vitest tests
+- the contract check against the real backend passes
+- 14 Playwright tests in real Chrome (desktop and phone): transfers, decline, text drop,
+  chat, speed test, pairing with auto-send, personal room links
 
 See [implementation.md §10](implementation.md#10-implementation-status) for details.
 
@@ -406,6 +462,11 @@ See [implementation.md §10](implementation.md#10-implementation-status) for det
   tab open; transfers resume if it's interrupted.
 - **Reloading the sender's page** requires selecting the same file again to resume. A
   reloaded receiver resumes on its own.
-- **Folders** arrive as a flat list of files, because the backend keeps only file names.
+- **Folders** keep their structure: the sanitized relative path travels over the
+  DataChannel (the backend still stores only file names). With normal downloads, browsers
+  save into the Downloads folder, so use a picked folder or *Save all as .zip* for nested
+  folders.
+- **Not built from the ideas list:** translations, a browser extension and the encrypted
+  "leave it for later" cloud copy.
 - **Cloud fallback** (the backend's optional Cloudflare R2 upload when no P2P or TURN path
   works) is not implemented in the frontend yet.

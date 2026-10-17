@@ -30,6 +30,25 @@ export function sanitizeFileName(raw: string, fallback = "download"): string {
   return truncateUtf8(name, MAX_BYTES) || fallback;
 }
 
+const MAX_FOLDER_DEPTH = 16;
+
+/**
+ * Cleans a folder path from another device ("photos/2026/../x"), keeping only safe
+ * segments. `..`, `.` and empty segments are dropped, so it can never point outside the
+ * folder the user picked. Returns null when nothing usable remains.
+ */
+export function sanitizeFolderPath(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const segments = raw
+    .replace(/\\/g, "/")
+    .split("/")
+    .filter((s) => s !== "" && s !== "." && s !== "..")
+    .map((s) => sanitizeFileName(s, ""))
+    .filter((s) => s !== "")
+    .slice(0, MAX_FOLDER_DEPTH);
+  return segments.length > 0 ? segments.join("/") : null;
+}
+
 /** Returns `name`, or `name (1).ext`, `name (2).ext`... if it is already in `taken`. */
 export function dedupeFileName(name: string, taken: ReadonlySet<string>): string {
   if (!taken.has(name.toLowerCase())) return name;

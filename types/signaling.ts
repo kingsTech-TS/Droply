@@ -238,6 +238,12 @@ export interface ErrorEvent {
   ref: string | null;
 }
 
+/** The host changed room settings (theme, discoverability). */
+export interface RoomUpdatedEvent {
+  type: "room_updated";
+  room: RoomView;
+}
+
 export interface RoomEndedEvent {
   type: "room_closed" | "room_expired";
   room_id: string;
@@ -256,6 +262,7 @@ export type ServerMessage =
   | ServerPingEvent
   | ServerPongEvent
   | ErrorEvent
+  | RoomUpdatedEvent
   | RoomEndedEvent;
 
 export type ServerMessageType = ServerMessage["type"];

@@ -16,6 +16,8 @@ export interface SinkRequest {
   directory?: DirectoryHandleLike | null;
   /** Reopen this tier (resume after reload). */
   preferredKind?: SinkKind | null;
+  /** Sanitized folder path inside a sent folder; used when saving straight to a folder. */
+  folderPath?: string | null;
 }
 
 export class NoStorageError extends Error {
@@ -30,8 +32,8 @@ export interface SinkFactory {
 
 export const browserSinkFactory: SinkFactory = {
   async create(request) {
-    const { transferId, fileName, size, totalChunks, directory, preferredKind } = request;
-    if (directory) return new FsAccessSink(directory, fileName);
+    const { transferId, fileName, size, totalChunks, directory, preferredKind, folderPath } = request;
+    if (directory) return new FsAccessSink(directory, fileName, folderPath ?? null);
     if (preferredKind !== "idb" && preferredKind !== "memory" && (await OpfsSink.isAvailable())) {
       return new OpfsSink(transferId, size);
     }

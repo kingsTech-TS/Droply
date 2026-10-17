@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useSyncExternalStore, type ReactNode } from "react";
-import type { RoomSession, RoomSnapshot } from "@/lib/session/room-session";
+import type { InboxMessage, PairRequest, RoomSession, RoomSnapshot } from "@/lib/session/room-session";
 import type { LinkInfo } from "@/lib/webrtc/peer-connection";
 import type { TransfersSnapshot } from "@/lib/webrtc/transfer-manager";
 
@@ -35,4 +35,20 @@ export function usePeerLinks(): Readonly<Record<string, LinkInfo>> {
   const { peers } = useRoomSession();
   const store = peers.links;
   return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+}
+
+/** Text drops and chat messages for this room (in memory only). */
+export function useInbox(): InboxMessage[] {
+  const { inbox } = useRoomSession();
+  return useSyncExternalStore(inbox.subscribe, inbox.getSnapshot, inbox.getSnapshot);
+}
+
+export function useUnreadChat(): number {
+  const { unreadChat } = useRoomSession();
+  return useSyncExternalStore(unreadChat.subscribe, unreadChat.getSnapshot, unreadChat.getSnapshot);
+}
+
+export function usePairRequests(): PairRequest[] {
+  const { pairRequests } = useRoomSession();
+  return useSyncExternalStore(pairRequests.subscribe, pairRequests.getSnapshot, pairRequests.getSnapshot);
 }

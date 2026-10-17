@@ -106,7 +106,7 @@ test("an invalid room code shows a clear error", async ({ page }) => {
 });
 
 test("no horizontal scrolling on the main pages", async ({ page }) => {
-  for (const path of ["/", "/about", "/join/K7X9PQ"]) {
+  for (const path of ["/", "/about", "/join/K7X9PQ", "/history", "/stats", "/privacy", "/speed-test", "/my-devices", "/r/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]) {
     await page.goto(path);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow, path).toBeLessThanOrEqual(0);

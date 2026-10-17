@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Header } from "@/components/layout/header";
 import { JoinCodeForm } from "@/components/landing/join-code-form";
 import { RoomSessionProvider } from "@/hooks/use-room-session";
@@ -45,7 +45,9 @@ export function RoomScreen({ roomId }: { roomId: string }) {
   if (state.kind === "ready") {
     return (
       <RoomSessionProvider session={state.session}>
-        <RoomView />
+        <Suspense>
+          <RoomView />
+        </Suspense>
       </RoomSessionProvider>
     );
   }

@@ -4,6 +4,12 @@ import type { RoomSession } from "@/types/room";
 
 const PREFIX = "droply:session:";
 
+/**
+ * How the room was entered. "my-devices": the shared room of paired devices (everyone in it
+ * holds the pairing key, so transfers are auto-accepted). "room-link": a personal link.
+ */
+export type SessionMode = "standard" | "my-devices" | "room-link";
+
 export interface StoredSession {
   roomId: string;
   roomCode: string;
@@ -11,9 +17,10 @@ export interface StoredSession {
   deviceId: string;
   token: string;
   tokenExpiresAt: string;
+  mode: SessionMode;
 }
 
-export function toStoredSession(session: RoomSession): StoredSession {
+export function toStoredSession(session: RoomSession, mode: SessionMode = "standard"): StoredSession {
   return {
     roomId: session.room_id,
     roomCode: session.room_code,
@@ -21,15 +28,20 @@ export function toStoredSession(session: RoomSession): StoredSession {
     deviceId: session.device.device_id,
     token: session.device_token,
     tokenExpiresAt: session.token_expires_at,
+    mode,
   };
 }
 
 function isStoredSession(value: unknown): value is StoredSession {
   if (typeof value !== "object" || value === null) return false;
   const v = value as Record<string, unknown>;
-  return ["roomId", "roomCode", "joinUrl", "deviceId", "token", "tokenExpiresAt"].every(
+  const fields = ["roomId", "roomCode", "joinUrl", "deviceId", "token", "tokenExpiresAt"].every(
     (key) => typeof v[key] === "string",
   );
+  if (!fields) return false;
+  // Sessions saved before modes existed are standard rooms.
+  if (v.mode !== "my-devices" && v.mode !== "room-link") v.mode = "standard";
+  return true;
 }
 
 export function saveSession(session: StoredSession): void {

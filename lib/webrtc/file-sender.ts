@@ -31,6 +31,10 @@ export interface SenderOptions {
   totalChunks: number;
   frameSize: number;
   window: number;
+  /** Folder path inside a sent folder, told to the receiver. */
+  path?: string | null;
+  /** Synthetic speed-test data: the receiver discards it. */
+  test?: boolean;
   /** Digests saved earlier (resume after reload), by chunk index. */
   knownDigests?: ReadonlyMap<number, string>;
   limiter?: Limiter;
@@ -75,7 +79,10 @@ export class FileSender {
       transport.events.on("close", () => this.finish({ kind: "interrupted" })),
     );
     try {
-      if (!transport.sendCtl({ t: "file_open", slot, transferId, size: source.size, chunkSize, totalChunks })) {
+      const open: Extract<Ctl, { t: "file_open" }> = { t: "file_open", slot, transferId, size: source.size, chunkSize, totalChunks };
+      if (this.options.path) open.path = this.options.path;
+      if (this.options.test) open.test = true;
+      if (!transport.sendCtl(open)) {
         return this.finish({ kind: "interrupted" });
       }
       const have = await this.waitFor(() => this.readyHave, this.options.readyTimeoutMs ?? 20_000);

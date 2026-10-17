@@ -91,9 +91,9 @@ export class PeerManager {
   }
 
   /** Retries a link that gave up (e.g. the user pressed Retry). */
-  retry(peerId: string): void {
+  retry(peerId: string, relayOnly = false): void {
     const link = this.link(peerId);
-    void link.retry();
+    void link.retry(relayOnly);
   }
 
   release(peerId: string): void {

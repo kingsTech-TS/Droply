@@ -115,6 +115,8 @@ function isValid(o: Obj): boolean {
     case "room_closed":
     case "room_expired":
       return str(o, "room_id");
+    case "room_updated":
+      return isRoom(o.room);
     default:
       return (
         typeof o.type === "string" &&

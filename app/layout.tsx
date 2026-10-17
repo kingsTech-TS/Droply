@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { ServiceWorker } from "@/components/layout/service-worker";
 import { ThemeProvider, THEME_BOOTSTRAP } from "@/components/layout/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { brand } from "@/config/brand";
@@ -44,6 +45,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <ThemeProvider>
           {children}
           <Toaster />
+          <ServiceWorker />
         </ThemeProvider>
       </body>
     </html>

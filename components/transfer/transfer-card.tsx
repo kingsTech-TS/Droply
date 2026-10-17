@@ -7,8 +7,10 @@ import {
   CheckCircle2Icon,
   ChevronDownIcon,
   FileSearchIcon,
+  FolderIcon,
   PauseIcon,
   PlayIcon,
+  RepeatIcon,
   RotateCcwIcon,
   ShieldAlertIcon,
   ShieldCheckIcon,
@@ -19,13 +21,16 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { cn } from "@/lib/utils/cn";
 import { formatBytes, formatSpeed } from "@/lib/utils/format";
 import type { LinkInfo } from "@/lib/webrtc/peer-connection";
+import { REACTIONS, type Reaction } from "@/lib/webrtc/protocol";
 import type { TransferSnapshot } from "@/lib/webrtc/transfer-manager";
 import { isTerminal, statusLabel } from "@/lib/webrtc/transfer-state";
 import { aggregateProgress, failureMessage, primaryStatus } from "@/lib/webrtc/transfer-view";
 import { CancelDialog } from "./cancel-dialog";
 import { FileIcon } from "./file-icon";
+import { MediaThumb } from "./media-thumb";
+import { MediaViewer } from "./media-viewer";
 import { TransferDetails } from "./transfer-details";
-import { TransferProgress } from "./transfer-progress";
+import { TransferProgress, TransferSummary } from "./transfer-progress";
 
 export interface TransferCardActions {
   pause: () => void;
@@ -35,6 +40,8 @@ export interface TransferCardActions {
   save: () => void;
   dismiss: () => void;
   reselect: (file: File) => void;
+  react?: (emoji: Reaction) => void;
+  sendAgain?: () => void;
 }
 
 export interface TransferCardProps {
@@ -42,13 +49,18 @@ export interface TransferCardProps {
   deviceName: (id: string) => string;
   link: LinkInfo | undefined;
   actions: TransferCardActions;
+  /** The file itself, when available on this device (for a safe image/video preview). */
+  media?: Blob | null;
 }
 
 const CONFIRM_CANCEL_BYTES = 100_000_000;
+const LARGE_FILE_BYTES = 100_000_000;
+const ROSTER_THRESHOLD = 6;
 
-export function TransferCard({ item, deviceName, link, actions }: TransferCardProps) {
+export function TransferCard({ item, deviceName, link, actions, media }: TransferCardProps) {
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
   const reselectInput = useRef<HTMLInputElement>(null);
   const status = primaryStatus(item);
   const progress = aggregateProgress(item);
@@ -59,9 +71,12 @@ export function TransferCard({ item, deviceName, link, actions }: TransferCardPr
   const completed = item.legs.some((l) => l.status === "completed");
   const failed = status === "failed";
   const verifyFailed = item.verification === "failed";
+  const delivered = item.legs.filter((l) => l.status === "completed").length;
 
   const peerText = outgoing
-    ? `To ${item.peerIds.map(deviceName).join(", ")}`
+    ? item.peerIds.length > 3
+      ? `To ${item.peerIds.length} devices`
+      : `To ${item.peerIds.map(deviceName).join(", ")}`
     : `From ${item.peerIds.map(deviceName).join(", ")}`;
 
   const requestCancel = () => {
@@ -78,6 +93,7 @@ export function TransferCard({ item, deviceName, link, actions }: TransferCardPr
   if (item.needsReselect) statusText = "Select the file again to resume";
 
   const tone = completed ? "success" : failed || verifyFailed ? "error" : status === "paused" ? "paused" : "default";
+  const showPreview = media && (outgoing || item.save === "ready" || item.save === "saved");
 
   return (
     <article
@@ -85,7 +101,10 @@ export function TransferCard({ item, deviceName, link, actions }: TransferCardPr
       className={cn("rounded-xl border bg-card p-4", completed && "border-success/40")}
     >
       <div className="flex min-w-0 items-start gap-3">
-        <FileIcon name={item.fileName} mimeType={item.mimeType} />
+        {showPreview ? (
+          <MediaThumb file={media} name={item.fileName} className="size-10 shrink-0" onOpen={() => setViewerOpen(true)} />
+        ) : null}
+        {!showPreview ? <FileIcon name={item.fileName} mimeType={item.mimeType} /> : null}
         <div className="min-w-0 flex-1 space-y-0.5">
           <p className="truncate font-medium" title={item.fileName}>
             {item.fileName}
@@ -95,6 +114,12 @@ export function TransferCard({ item, deviceName, link, actions }: TransferCardPr
             <span className="truncate">{peerText}</span>
             <span aria-hidden>·</span>
             <span>{formatBytes(item.fileSize)}</span>
+            {item.relativePath ? (
+              <span className="inline-flex min-w-0 items-center gap-1">
+                <FolderIcon aria-hidden className="size-3.5" />
+                <span className="truncate">{item.relativePath}</span>
+              </span>
+            ) : null}
           </p>
         </div>
         {done || failed ? (
@@ -112,7 +137,11 @@ export function TransferCard({ item, deviceName, link, actions }: TransferCardPr
           )}
         >
           {completed ? <CheckCircle2Icon aria-hidden className="size-4" /> : null}
-          {completed ? "Transfer complete" : statusText}
+          {completed
+            ? outgoing && item.legs.length > 1
+              ? `Delivered to ${delivered} of ${item.legs.length}`
+              : "Transfer complete"
+            : statusText}
         </p>
         {!outgoing && item.verification === "verified" ? (
           <p className="flex items-center gap-1.5 text-sm text-success">
@@ -133,24 +162,53 @@ export function TransferCard({ item, deviceName, link, actions }: TransferCardPr
             fileName={item.fileName}
             showRates={status === "transferring"}
             tone={tone}
+            link={link}
+            large={item.fileSize >= LARGE_FILE_BYTES}
           />
-        ) : progress.averageSpeed ? (
-          <p className="text-xs text-muted-foreground">{formatSpeed(progress.averageSpeed)} average</p>
-        ) : null}
+        ) : (
+          <TransferSummary bytes={item.fileSize} progress={progress} />
+        )}
 
         {outgoing && item.legs.length > 1 ? (
-          <ul className="space-y-1 text-xs text-muted-foreground">
-            {item.legs.map((leg) => (
-              <li key={leg.deviceId} className="flex justify-between gap-2">
-                <span className="truncate">{deviceName(leg.deviceId)}</span>
-                <span className="shrink-0 tabular-nums">
-                  {leg.status === "transferring"
-                    ? `${Math.floor((leg.verifiedBytes / Math.max(1, item.fileSize)) * 100)}%`
-                    : statusLabel(leg.status)}
-                </span>
-              </li>
-            ))}
-          </ul>
+          item.legs.length >= ROSTER_THRESHOLD ? (
+            <ul className="flex flex-wrap gap-1.5" aria-label="Delivery status per device">
+              {item.legs.map((leg) => (
+                <li
+                  key={leg.deviceId}
+                  title={`${deviceName(leg.deviceId)}: ${statusLabel(leg.status)}`}
+                  className={cn(
+                    "max-w-32 truncate rounded-full px-2 py-0.5 text-xs",
+                    leg.status === "completed" && "bg-success/15 text-success",
+                    leg.status === "transferring" && "bg-electric/15 text-electric",
+                    (leg.status === "rejected" || leg.status === "failed" || leg.status === "cancelled") && "bg-destructive/12 text-destructive",
+                    !["completed", "transferring", "rejected", "failed", "cancelled"].includes(leg.status) && "bg-muted text-muted-foreground",
+                  )}
+                >
+                  {deviceName(leg.deviceId)}
+                  <span className="sr-only">: {statusLabel(leg.status)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <ul className="space-y-1 text-xs text-muted-foreground">
+              {item.legs.map((leg) => (
+                <li key={leg.deviceId} className="flex justify-between gap-2">
+                  <span className="truncate">{deviceName(leg.deviceId)}</span>
+                  <span className="shrink-0 tabular-nums">
+                    {leg.status === "transferring"
+                      ? `${Math.floor((leg.verifiedBytes / Math.max(1, item.fileSize)) * 100)}% · ${formatSpeed(leg.speed)}`
+                      : statusLabel(leg.status)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )
+        ) : null}
+
+        {outgoing && item.reactions.length > 0 ? (
+          <p className="text-sm" aria-label={`Reactions: ${item.reactions.join(" ")}`}>
+            {item.reactions.join(" ")}
+          </p>
         ) : null}
 
         <div className="flex flex-wrap gap-2">
@@ -198,12 +256,38 @@ export function TransferCard({ item, deviceName, link, actions }: TransferCardPr
             </Button>
           ) : null}
           {!outgoing && item.save === "saved" ? <span className="self-center text-sm text-muted-foreground">Saved</span> : null}
+          {outgoing && done && item.canResend && actions.sendAgain ? (
+            <Button variant="outline" size="sm" onClick={actions.sendAgain}>
+              <RepeatIcon aria-hidden />
+              Send again
+            </Button>
+          ) : null}
           {!done ? (
             <Button variant="ghost" size="sm" onClick={requestCancel}>
               Cancel
             </Button>
           ) : null}
         </div>
+
+        {!outgoing && completed && actions.react ? (
+          <div className="flex flex-wrap items-center gap-1" role="group" aria-label="React to this file">
+            {REACTIONS.map((emoji) => (
+              <button
+                key={emoji}
+                type="button"
+                onClick={() => actions.react?.(emoji)}
+                aria-pressed={item.reactions.includes(emoji)}
+                aria-label={`React ${emoji}`}
+                className={cn(
+                  "inline-flex size-9 cursor-pointer items-center justify-center rounded-full text-lg transition-transform hover:scale-110",
+                  item.reactions.includes(emoji) ? "bg-primary/15 ring-1 ring-primary/40" : "hover:bg-accent",
+                )}
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+        ) : null}
 
         {status === "transferring" || status === "paused" ? (
           <Collapsible open={detailsOpen} onOpenChange={setDetailsOpen}>
@@ -227,6 +311,15 @@ export function TransferCard({ item, deviceName, link, actions }: TransferCardPr
           actions.cancel();
         }}
       />
+      {showPreview ? (
+        <MediaViewer
+          file={media}
+          name={item.fileName}
+          open={viewerOpen}
+          onOpenChange={setViewerOpen}
+          onSave={!outgoing && item.save !== "saving" ? actions.save : undefined}
+        />
+      ) : null}
     </article>
   );
 }

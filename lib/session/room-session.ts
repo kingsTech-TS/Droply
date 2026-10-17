@@ -1,24 +1,36 @@
-// Owns every service for one room: signaling, peer links, transfers. Created when the room
-// page mounts, disposed when it unmounts. React reads its stores; it never imports React.
+// Owns every service for one room: signaling, peer links, transfers, peer messages.
+// Created when the room page mounts, disposed when it unmounts. React reads its stores;
+// it never imports React.
 import { env } from "@/config/env";
-import { closeRoom, getRoom } from "@/lib/api/rooms";
-import { isApiError } from "@/lib/api/errors";
+import { closeRoom, getRoom, updateRoomSettings } from "@/lib/api/rooms";
+import { isApiError, userMessage } from "@/lib/api/errors";
 import { createTransfer, getTransfer, transferAction } from "@/lib/api/transfers";
 import { detectDevice } from "@/lib/device/detection";
+import { addToHistory } from "@/lib/history/history";
+import { addPairedDevice, ensurePairingKey, pairing } from "@/lib/pairing/pairing";
 import { browserSinkFactory } from "@/lib/storage/sinks/factory";
 import { requestPersistence } from "@/lib/storage/quota";
 import { Emitter, Store } from "@/lib/utils/emitter";
+import { randomId } from "@/lib/utils/id";
 import { logger } from "@/lib/utils/logger";
 import { defaultTuning } from "@/lib/webrtc/adaptive-controller";
 import { IceServerProvider } from "@/lib/webrtc/ice";
+import { PeerMessenger } from "@/lib/webrtc/messaging";
 import { PeerManager } from "@/lib/webrtc/peer-manager";
+import { MAX_CHAT_MESSAGE, MAX_TEXT_MESSAGE, type AppMessage, type Reaction } from "@/lib/webrtc/protocol";
 import { createResumeStore } from "@/lib/webrtc/resume-manager";
 import { SignalingClient, type EndReason, type SignalingStatus } from "@/lib/webrtc/signaling-client";
-import { TransferManager, type Notice } from "@/lib/webrtc/transfer-manager";
+import {
+  TransferManager,
+  type Completion,
+  type Notice,
+  type SpeedTestResult,
+} from "@/lib/webrtc/transfer-manager";
 import type { DeviceView } from "@/types/device";
+import type { RoomKind, RoomTheme, RoomView } from "@/types/room";
 import type { DeviceUpdate, RoomStateEvent, TransferEventType } from "@/types/signaling";
 import type { TransferConfigView } from "@/types/transfer";
-import { clearSession, type StoredSession } from "./session-store";
+import { clearSession, type SessionMode, type StoredSession } from "./session-store";
 
 export type RoomStatus = "connecting" | "live" | "reconnecting" | "ended";
 
@@ -37,6 +49,41 @@ export interface RoomSnapshot {
   /** Every device in the room, this one included. */
   devices: DeviceView[];
   online: boolean;
+  kind: RoomKind;
+  maxDevices: number;
+  discoverable: boolean;
+  theme: RoomTheme;
+  mode: SessionMode;
+}
+
+/** Text drops and chat messages, kept in memory for this room only. */
+export interface InboxMessage {
+  id: string;
+  kind: "text" | "chat";
+  direction: "in" | "out";
+  /** Sender for incoming; recipients for outgoing. */
+  peerIds: string[];
+  text: string;
+  at: number;
+}
+
+export interface PairRequest {
+  peerId: string;
+  name: string;
+  key: string;
+}
+
+/** One celebration per finished batch (several files merged). */
+export interface Celebration {
+  direction: "outgoing" | "incoming";
+  files: number;
+  bytes: number;
+  fileNames: string[];
+  peerIds: string[];
+  averageSpeed: number | null;
+  peakSpeed: number | null;
+  seconds: number;
+  newRecord: boolean;
 }
 
 export const DEFAULT_TRANSFER_CONFIG: TransferConfigView = {
@@ -68,12 +115,21 @@ const TRANSFER_EVENT_TYPES: readonly TransferEventType[] = [
   "transfer_fallback_ready",
 ];
 
+const MAX_INBOX = 200;
+const CELEBRATION_MERGE_MS = 1500;
+
 export class RoomSession {
   readonly room: Store<RoomSnapshot>;
   readonly notices = new Emitter<{ notice: Notice }>();
+  /** Batch-level "it's done" moments, for sounds, confetti and result cards. */
+  readonly celebrations = new Emitter<{ celebration: Celebration }>();
+  readonly inbox = new Store<InboxMessage[]>([]);
+  readonly unreadChat = new Store<number>(0);
+  readonly pairRequests = new Store<PairRequest[]>([]);
   readonly signaling: SignalingClient;
   readonly peers: PeerManager;
   readonly transfers: TransferManager;
+  readonly messenger: PeerMessenger;
   readonly mobile: boolean;
 
   private readonly ice: IceServerProvider;
@@ -84,13 +140,15 @@ export class RoomSession {
   private restored = false;
   private disposed = false;
   private wasLive = false;
+  private chatOpen = false;
+  private pendingCelebration: { celebration: Celebration; timer: ReturnType<typeof setTimeout> } | null = null;
+  private readonly detected = detectDevice();
 
   constructor(
     readonly session: StoredSession,
     device: DeviceUpdate | undefined,
   ) {
-    const detected = detectDevice();
-    this.mobile = detected.type === "phone" || detected.type === "tablet";
+    this.mobile = this.detected.type === "phone" || this.detected.type === "tablet";
     this.room = new Store<RoomSnapshot>({
       roomId: session.roomId,
       roomCode: session.roomCode,
@@ -104,6 +162,11 @@ export class RoomSession {
       endReason: null,
       devices: [],
       online: typeof navigator === "undefined" ? true : navigator.onLine,
+      kind: "standard",
+      maxDevices: 20,
+      discoverable: false,
+      theme: "default",
+      mode: session.mode,
     });
 
     this.signaling = new SignalingClient({
@@ -136,8 +199,15 @@ export class RoomSession {
       sinks: browserSinkFactory,
       mobile: this.mobile,
       deviceName: (id) => this.deviceName(id),
+      // Only devices holding the pairing key can enter a "My devices" room.
+      trustAll: session.mode === "my-devices",
     });
-    this.subs.push(this.transfers.notices.on("notice", (notice) => this.notices.emit("notice", notice)));
+    this.messenger = new PeerMessenger(this.peers);
+    this.subs.push(
+      this.transfers.notices.on("notice", (notice) => this.notices.emit("notice", notice)),
+      this.transfers.completions.on("completion", (c) => this.onCompletion(c)),
+      this.messenger.events.on("message", ({ peerId, message }) => this.onAppMessage(peerId, message)),
+    );
   }
 
   start(): void {
@@ -152,6 +222,7 @@ export class RoomSession {
       s.on("offer", (m) => void this.peers.handleOffer(m)),
       s.on("answer", (m) => void this.peers.handleAnswer(m)),
       s.on("ice_candidate", (m) => void this.peers.handleCandidate(m)),
+      s.on("room_updated", ({ room }) => this.applyRoomView(room)),
       s.on("room_expired", () => this.endRoom("expired")),
       s.on("room_closed", () => this.endRoom("room_ended")),
       this.peers.links.subscribe(() => this.onLinksChanged()),
@@ -173,6 +244,97 @@ export class RoomSession {
     return this.room.getSnapshot().devices.find((d) => d.device_id === deviceId)?.device_name ?? "a device";
   }
 
+  get isHost(): boolean {
+    const room = this.room.getSnapshot();
+    return room.hostDeviceId === room.selfId;
+  }
+
+  /** Online devices other than this one. */
+  onlinePeerIds(): string[] {
+    const room = this.room.getSnapshot();
+    return room.devices
+      .filter((d) => d.device_id !== room.selfId && d.connection_state === "connected")
+      .map((d) => d.device_id);
+  }
+
+  // --- host settings ---------------------------------------------------------------------
+
+  async setTheme(theme: RoomTheme): Promise<void> {
+    this.applyRoomView(await updateRoomSettings(this.session.roomId, { theme }, this.session.token));
+  }
+
+  async setDiscoverable(discoverable: boolean): Promise<void> {
+    this.applyRoomView(await updateRoomSettings(this.session.roomId, { discoverable }, this.session.token));
+  }
+
+  // --- peer messages -------------------------------------------------------------------------
+
+  /** Sends a text (link, note, password…) privately to the chosen devices. */
+  async sendText(peerIds: readonly string[], text: string): Promise<number> {
+    const trimmed = text.slice(0, MAX_TEXT_MESSAGE);
+    if (!trimmed.trim() || peerIds.length === 0) return 0;
+    const id = randomId("t");
+    const delivered = await this.messenger.broadcast(peerIds, { kind: "text", id, text: trimmed });
+    this.pushInbox({ id, kind: "text", direction: "out", peerIds: delivered, text: trimmed, at: Date.now() });
+    if (delivered.length < peerIds.length) {
+      this.notices.emit("notice", { kind: "warning", message: "Some devices couldn't be reached." });
+    }
+    return delivered.length;
+  }
+
+  /** Room chat: sent to every online device over the encrypted peer-to-peer channel. */
+  async sendChat(text: string): Promise<void> {
+    const trimmed = text.trim().slice(0, MAX_CHAT_MESSAGE);
+    if (!trimmed) return;
+    const id = randomId("c");
+    const peers = this.onlinePeerIds();
+    this.pushInbox({ id, kind: "chat", direction: "out", peerIds: peers, text: trimmed, at: Date.now() });
+    const delivered = await this.messenger.broadcast(peers, { kind: "chat", id, text: trimmed });
+    if (delivered.length < peers.length) {
+      this.notices.emit("notice", { kind: "warning", message: "Your message didn't reach every device." });
+    }
+  }
+
+  setChatOpen(open: boolean): void {
+    this.chatOpen = open;
+    if (open) this.unreadChat.set(0);
+  }
+
+  /** Reacts to a received file; the sender sees it on their transfer card. */
+  async react(transferId: string, emoji: Reaction): Promise<void> {
+    const senderId = this.transfers.markReacted(transferId, emoji);
+    if (senderId) await this.messenger.send(senderId, { kind: "reaction", transferId, emoji });
+  }
+
+  /** Asks a device to join this device's "My devices" group. */
+  async requestPairing(peerId: string): Promise<boolean> {
+    const key = ensurePairingKey();
+    const ok = await this.messenger.send(peerId, { kind: "pair_request", key, name: this.selfName() });
+    if (ok) this.notices.emit("notice", { kind: "info", message: `Waiting for ${this.deviceName(peerId)} to accept…` });
+    return ok;
+  }
+
+  async respondToPairing(peerId: string, accept: boolean): Promise<void> {
+    const request = this.pairRequests.getSnapshot().find((r) => r.peerId === peerId);
+    this.pairRequests.update((list) => list.filter((r) => r.peerId !== peerId));
+    if (!request) return;
+    if (!accept) {
+      await this.messenger.send(peerId, { kind: "pair_decline" });
+      return;
+    }
+    const peer = this.room.getSnapshot().devices.find((d) => d.device_id === peerId);
+    addPairedDevice({ name: request.name, type: peer?.device_type ?? "unknown" }, request.key);
+    await this.messenger.send(peerId, { kind: "pair_accept", name: this.selfName() });
+    this.notices.emit("notice", { kind: "success", message: `Paired with ${request.name}` });
+  }
+
+  /** Synthetic transfer to measure the link (nothing is saved). */
+  runSpeedTest(peerId: string, bytes: number, onProgress?: (verified: number, speed: number | null) => void): Promise<SpeedTestResult> {
+    return this.transfers.runSpeedTest(peerId, bytes, onProgress);
+  }
+
+  // --- lifecycle -------------------------------------------------------------------------------
+
   /** Leaves for good: the server removes this device and revokes the token. */
   leave(): void {
     this.signaling.leave();
@@ -189,8 +351,15 @@ export class RoomSession {
     this.signaling.retryNow();
   }
 
-  retryPeer(peerId: string): void {
-    this.peers.retry(peerId);
+  /** Retries a failed link; `relayOnly` forces TURN when direct paths keep failing. */
+  retryPeer(peerId: string, relayOnly = false): void {
+    this.peers.retry(peerId, relayOnly);
+  }
+
+  /** Any message to the server counts as activity and extends the room. */
+  keepAlive(): void {
+    this.signaling.send({ type: "ping", ts: Date.now() });
+    void this.refreshRoom();
   }
 
   dispose(): void {
@@ -204,13 +373,20 @@ export class RoomSession {
     }
     if (this.refreshTimer) clearInterval(this.refreshTimer);
     if (this.statsTimer) clearTimeout(this.statsTimer);
+    if (this.pendingCelebration) clearTimeout(this.pendingCelebration.timer);
+    this.messenger.dispose();
     this.transfers.dispose();
     this.peers.dispose();
     this.signaling.dispose();
     this.notices.clear();
+    this.celebrations.clear();
   }
 
   // --- event handlers ----------------------------------------------------------------
+
+  private selfName(): string {
+    return this.room.getSnapshot().devices.find((d) => d.device_id === this.session.deviceId)?.device_name ?? "Droply device";
+  }
 
   private onRoomState(event: RoomStateEvent): void {
     this.ice.setStun(event.ice_servers);
@@ -222,14 +398,8 @@ export class RoomSession {
     for (const old of this.room.getSnapshot().devices) {
       if (!present.has(old.device_id)) this.peers.remove(old.device_id);
     }
-    this.patch({
-      roomCode: event.room.room_code,
-      joinUrl: event.room.join_url,
-      hostDeviceId: event.room.host_device_id,
-      expiresAt: Date.parse(event.room.expires_at) || null,
-      devices,
-      status: "live",
-    });
+    this.applyRoomView(event.room);
+    this.patch({ status: "live" });
     if (this.wasLive) {
       this.notices.emit("notice", { kind: "success", message: "Reconnected" });
     }
@@ -244,6 +414,20 @@ export class RoomSession {
       void this.transfers.restore();
       void requestPersistence();
     }
+  }
+
+  private applyRoomView(room: RoomView): void {
+    this.patch({
+      roomCode: room.room_code,
+      joinUrl: room.join_url,
+      hostDeviceId: room.host_device_id,
+      expiresAt: Date.parse(room.expires_at) || null,
+      devices: room.devices,
+      kind: room.kind ?? "standard",
+      maxDevices: room.max_devices,
+      discoverable: room.discoverable ?? false,
+      theme: room.theme ?? "default",
+    });
   }
 
   private upsertDevice(device: DeviceView, joined: boolean): void {
@@ -261,9 +445,101 @@ export class RoomSession {
     this.patch({ devices });
     this.peers.remove(deviceId);
     this.connectedOnce.delete(deviceId);
+    this.pairRequests.update((list) => list.filter((r) => r.peerId !== deviceId));
     if (reason === "disconnected" || reason === "timeout") {
       this.notices.emit("notice", { kind: "warning", message: `${name} disconnected.` });
     }
+  }
+
+  private onAppMessage(peerId: string, message: AppMessage): void {
+    switch (message.kind) {
+      case "text":
+        this.pushInbox({ id: message.id, kind: "text", direction: "in", peerIds: [peerId], text: message.text, at: Date.now() });
+        this.notices.emit("notice", { kind: "info", message: `${this.deviceName(peerId)} sent you a text` });
+        break;
+      case "chat":
+        this.pushInbox({ id: message.id, kind: "chat", direction: "in", peerIds: [peerId], text: message.text, at: Date.now() });
+        if (!this.chatOpen) this.unreadChat.update((n) => n + 1);
+        break;
+      case "reaction":
+        this.transfers.addReaction(message.transferId, peerId, message.emoji);
+        break;
+      case "pair_request":
+        this.pairRequests.update((list) => [
+          ...list.filter((r) => r.peerId !== peerId),
+          { peerId, name: message.name, key: message.key },
+        ]);
+        break;
+      case "pair_accept": {
+        const peer = this.room.getSnapshot().devices.find((d) => d.device_id === peerId);
+        // Only record it if we actually asked (we hold a key).
+        if (pairing.get().key) {
+          addPairedDevice({ name: message.name, type: peer?.device_type ?? "unknown" });
+          this.notices.emit("notice", { kind: "success", message: `Paired with ${message.name}` });
+        }
+        break;
+      }
+      case "pair_decline":
+        this.notices.emit("notice", { kind: "info", message: `${this.deviceName(peerId)} declined pairing.` });
+        break;
+    }
+  }
+
+  private pushInbox(message: InboxMessage): void {
+    this.inbox.update((list) => [...list.filter((m) => m.id !== message.id), message].slice(-MAX_INBOX));
+  }
+
+  private onCompletion(c: Completion): void {
+    const record = addToHistory({
+      at: Date.now(),
+      direction: c.direction,
+      fileName: c.fileName,
+      fileSize: c.fileSize,
+      mimeType: c.mimeType,
+      peerName: this.deviceName(c.peerId),
+      averageSpeed: c.averageSpeed,
+      peakSpeed: c.peakSpeed,
+      seconds: c.seconds,
+      roomSize: this.room.getSnapshot().devices.length,
+    });
+    const newRecord = record.newAverageRecord || record.newPeakRecord;
+    // Merge completions that land close together into one celebration.
+    const pending = this.pendingCelebration;
+    if (pending && pending.celebration.direction === c.direction) {
+      clearTimeout(pending.timer);
+      const p = pending.celebration;
+      p.files += c.direction === "outgoing" && p.fileNames.includes(c.fileName) ? 0 : 1;
+      p.bytes += c.fileSize;
+      if (!p.fileNames.includes(c.fileName)) p.fileNames.push(c.fileName);
+      if (!p.peerIds.includes(c.peerId)) p.peerIds.push(c.peerId);
+      p.seconds = Math.max(p.seconds, c.seconds);
+      p.peakSpeed = Math.max(p.peakSpeed ?? 0, c.peakSpeed ?? 0) || null;
+      p.averageSpeed = p.seconds > 0 ? p.bytes / p.seconds : p.averageSpeed;
+      p.newRecord ||= newRecord;
+      pending.timer = setTimeout(() => this.flushCelebration(), CELEBRATION_MERGE_MS);
+      return;
+    }
+    if (pending) this.flushCelebration();
+    this.pendingCelebration = {
+      celebration: {
+        direction: c.direction,
+        files: 1,
+        bytes: c.fileSize,
+        fileNames: [c.fileName],
+        peerIds: [c.peerId],
+        averageSpeed: c.averageSpeed,
+        peakSpeed: c.peakSpeed,
+        seconds: c.seconds,
+        newRecord,
+      },
+      timer: setTimeout(() => this.flushCelebration(), CELEBRATION_MERGE_MS),
+    };
+  }
+
+  private flushCelebration(): void {
+    const pending = this.pendingCelebration;
+    this.pendingCelebration = null;
+    if (pending && !this.disposed) this.celebrations.emit("celebration", pending.celebration);
   }
 
   private onLinksChanged(): void {
@@ -313,10 +589,12 @@ export class RoomSession {
     if (this.disposed || this.room.getSnapshot().status === "ended") return;
     try {
       const room = await getRoom(this.session.roomId, this.session.token);
-      this.patch({ expiresAt: Date.parse(room.expires_at) || null, hostDeviceId: room.host_device_id });
+      this.applyRoomView(room);
     } catch (error) {
       if (isApiError(error) && (error.code === "ROOM_EXPIRED" || error.code === "ROOM_NOT_FOUND")) {
         this.endRoom("expired");
+      } else {
+        logger.debug("room", "refresh failed", userMessage(error));
       }
     }
   }

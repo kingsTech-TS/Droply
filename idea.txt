@@ -1,0 +1,255 @@
+DROPLY: FEATURE IDEAS
+=====================
+
+Ideas to make Droply more fun and to give people reasons to come back. They're grouped by
+theme, and each one is tagged with:
+
+  Effort:  S = a few days, M = 1-2 weeks, L = several weeks
+  Needs:   FE = frontend only, BE = backend change too, $ = running cost (storage, servers)
+
+Ground rule: the promise is "fast, private, direct". Every idea below keeps file contents
+off our servers unless the user explicitly opts in, and none of them sell or track what
+people send.
+
+
+STATUS (October 2026)
+---------------------
+Implemented: everything below except Language translations, Browser extension, Leave it
+for later (encrypted cloud fallback) and the "Globetrotter" badge (the browser can't tell
+which countries a relay crosses). Classroom mode is covered by event rooms (50 devices),
+the delivery roster and normal sending back to the host.
+
+-------------------------------------------------------------------------------------------
+TOP PICKS (best value for the effort, in order)
+-------------------------------------------------------------------------------------------
+
+ 1. My devices: remember your own phone and laptop so they find each other without a code.
+ 2. Nearby devices: see devices on the same network instantly, no code, no QR.
+ 3. Clipboard and text sharing: send a link, a note or a password with one tap.
+ 4. Install as an app (PWA) with the "Share to Droply" menu on phones.
+ 5. Fun device names and avatars ("Sneaky Otter", "Turbo Falcon").
+ 6. Transfer stats and badges ("You've moved 120 GB at 85 MB/s").
+ 7. Photo and video preview grid for received media.
+ 8. Sound and confetti on completion, with a "speed record" moment.
+
+
+-------------------------------------------------------------------------------------------
+1. COME-BACK FEATURES (habit and convenience)
+-------------------------------------------------------------------------------------------
+
+My devices / pairing                                            Effort: M   Needs: FE BE
+  Pair your devices once, by scanning a QR code a single time. Afterwards, opening Droply on
+  any of them shows the others ready to receive. No codes, no rooms to create. This turns
+  Droply from a "sometimes" tool into the default way to move files between your own
+  devices. Store a pairing key on each device, and have the backend match paired devices
+  when they come online (it never sees files).
+
+Nearby devices (same network)                                   Effort: M   Needs: BE
+  Group devices that share a public IP (same Wi-Fi) into a "Nearby" list automatically,
+  the way AirDrop shows people around you. One tap to send. Keep it opt-in and
+  short-lived for privacy.
+
+Install as an app (PWA) + Share Target                          Effort: S   Needs: FE
+  Add a manifest and a service worker so Droply installs on the home screen and desktop.
+  With the Web Share Target API it then appears in the phone's own "Share" menu, so you
+  pick a photo in your gallery, tap Share → Droply, and it sends. This is the single
+  biggest driver of repeat use on phones.
+
+Clipboard and text drop                                         Effort: S   Needs: FE
+  A "Send text" box next to the drop zone for links, notes, addresses and Wi-Fi passwords,
+  plus "Paste from clipboard". Tiny messages can go over the DataChannel instantly. People
+  move text between their phone and laptop many times a day.
+
+Quick resend and history (stored only on your device)           Effort: S   Needs: FE
+  A local list of recent transfers (names, sizes, devices, speed) with "Send again". Kept in
+  IndexedDB on the device, clearable, never uploaded.
+
+Saved rooms / "My room" link                                    Effort: M   Needs: BE
+  A personal, permanent link (droply.app/r/solomon) that is always ready to receive, like a
+  personal drop box. You share it once with friends and it opens a private room. The
+  backend needs longer-lived rooms and owner tokens.
+
+Browser notifications                                           Effort: S   Needs: FE
+  "Mary wants to send you 3 files" as a system notification while the tab is in the
+  background, using the Notifications API.
+
+Keyboard power-user mode                                        Effort: S   Needs: FE
+  Ctrl+V pastes files or text straight into a send, Ctrl+O selects files, and number keys
+  pick recipients.
+
+
+-------------------------------------------------------------------------------------------
+2. FUN AND PERSONALITY
+-------------------------------------------------------------------------------------------
+
+Playful device names and avatars                                Effort: S   Needs: FE
+  Assign each device a fun name and an emoji or animal avatar ("Sneaky Otter 🦦"), still
+  editable. It makes rooms friendlier and devices easier to tell apart than "Windows
+  Desktop" ×3.
+
+Celebrations                                                    Effort: S   Needs: FE
+  Confetti on a finished batch, a satisfying "whoosh" sound when sending, and a haptic buzz
+  on phones (navigator.vibrate). All respect reduced-motion and a mute switch.
+
+Live speed display while sending                                Effort: S   Needs: FE
+  Already there: each transfer card shows the current speed and time remaining for both
+  the sender and the receiver, and "Transfer details" adds the average speed, latency and
+  connection type. Make it a feature people enjoy watching:
+    - a big, readable speed number (e.g. "⚡ 87.4 MB/s") at the top of the card, not just
+      small text under the bar
+    - a speedometer-style gauge, and a small live graph of the last 30 seconds so you can
+      watch it ramp up
+    - a total speed for the whole batch when several files or recipients send at once
+    - the speed per recipient when one file goes to several devices
+    - a summary at the end: "2.8 GB in 35 s · average 79 MB/s · top 112 MB/s"
+    - the connection type next to the speed ("⚡ Direct · 87 MB/s" vs "🔄 Relay · 9 MB/s"),
+      so people understand why it's fast or slow
+  Use only measured, verified bytes (no fake speeds), and update about 4 times a second.
+
+Speed records                                                   Effort: S   Needs: FE
+  "New personal record: 112 MB/s!" when you beat your best, with a small celebration.
+  Stored locally.
+
+Personal stats ("Droply Wrapped")                               Effort: M   Needs: FE
+  "This month you sent 48 GB across 4 devices, mostly videos, fastest at 9 pm." A
+  shareable, privacy-safe summary card, generated on the device from local history.
+
+Badges / achievements                                           Effort: S   Needs: FE
+  "First drop", "Gigabyte club" (1 GB in one go), "Marathon" (10 GB), "Speed demon" (over
+  100 MB/s), "Party room" (5+ devices), "Globetrotter" (relay across countries). Local only,
+  just for fun.
+
+Room themes                                                     Effort: S   Needs: FE
+  The host picks a color or theme for the room (birthday, wedding, gaming, study), with
+  matching accent colors and a small banner.
+
+Reactions                                                       Effort: S   Needs: FE BE
+  The receiver can tap 👍 ❤️ 😂 on a finished transfer and the sender sees it. Sent as a tiny
+  WebSocket or DataChannel message.
+
+Animated "flight path"                                          Effort: S   Needs: FE
+  On completion, a small animation of the file flying from the sender's device icon to the
+  receiver's. It's the AirDrop magic moment.
+
+
+-------------------------------------------------------------------------------------------
+3. SOCIAL AND GROUP USE
+-------------------------------------------------------------------------------------------
+
+Party / event rooms                                             Effort: M   Needs: BE
+  One QR code on a screen at an event, class or wedding: everyone joins, and the host
+  broadcasts photos or slides to the whole room. Others can drop their photos in. Needs
+  bigger rooms and a "host broadcasts" mode.
+
+Shared photo album (live)                                       Effort: M   Needs: FE
+  In a room, every received photo appears in a shared grid that everyone can save from.
+  It's great after a trip or a party. Still peer-to-peer.
+
+Room chat                                                       Effort: M   Needs: FE BE
+  A small chat panel in the room ("sending the rest in a sec", "got it, thanks!"),
+  delivered over the DataChannel between peers so the server doesn't store messages.
+
+Invite by link, not just QR                                     Effort: S   Needs: FE
+  "Share invite" uses the Web Share API, so the room link goes straight to WhatsApp,
+  Telegram or iMessage from the phone's share sheet.
+
+Classroom mode                                                  Effort: M   Needs: BE
+  A teacher hands out a worksheet to 30 devices at once and students hand work back.
+  Needs larger rooms and the host seeing who received what.
+
+
+-------------------------------------------------------------------------------------------
+4. FILE-HANDLING FEATURES PEOPLE ASK FOR
+-------------------------------------------------------------------------------------------
+
+Media preview                                                   Effort: M   Needs: FE
+  Thumbnails for received images and videos, with a safe, sandboxed preview (raster images
+  and video only, never HTML, SVG or executables).
+
+Send a whole folder (keep structure)                            Effort: M   Needs: FE BE
+  Keep folder paths, by sending the sanitized relative path over the DataChannel. The
+  receiver saves into a chosen folder with the same structure, or as a zip.
+
+Zip on the fly                                                  Effort: M   Needs: FE
+  "Receive as .zip" for many small files, streamed while it's being written so it never
+  sits in memory.
+
+Image compression option                                        Effort: S   Needs: FE
+  "Send smaller" for photos on slow connections: resize and compress in the browser before
+  sending.
+
+Leave it for later (encrypted cloud fallback, opt-in)           Effort: L   Needs: FE BE $
+  The backend already supports Cloudflare R2. When the other device is offline, upload an
+  end-to-end-encrypted copy, with the key kept in the link and never on the server, that
+  expires in 24 hours. It shows clearly that this one isn't direct.
+
+End-to-end encryption badge with a verification code            Effort: M   Needs: FE
+  Show both users the same 4-emoji code ("🐙🚀🍕🌵") to confirm nobody is in the middle.
+  The transfer schema already has an encryption field.
+
+Scheduled / auto-send                                           Effort: M   Needs: FE
+  "When my laptop comes online, send these" between paired devices.
+
+
+-------------------------------------------------------------------------------------------
+5. GROWTH AND SHARING (getting new visitors)
+-------------------------------------------------------------------------------------------
+
+Speed test page                                                 Effort: S   Needs: FE
+  "How fast can your two devices talk?", built on the existing /dev/benchmark. People love
+  speed tests and share the results. It's a good landing page for search.
+
+Shareable result cards                                          Effort: S   Needs: FE
+  "I just sent 4.2 GB in 51 seconds with Droply ⚡" as an image card to share.
+
+No-account promise + transparency page                          Effort: S   Needs: FE
+  A short, honest page showing exactly what the server sees (room code, device names, file
+  names and sizes) and what it never sees (file contents). Trust brings people back.
+
+Language translations                                           Effort: M   Needs: FE
+  Start with the languages of your main users. All copy already lives in components and
+  config, so it's easy to extract.
+
+Browser extension                                               Effort: L   Needs: FE
+  Right-click any image or link → "Send to my phone with Droply".
+
+
+-------------------------------------------------------------------------------------------
+6. QUALITY OF LIFE (small things that make people stay)
+-------------------------------------------------------------------------------------------
+
+  - Remember the last recipients and preselect them next time.                  Effort: S
+  - "Keep this tab open" banner on phones while transferring.                   Effort: S
+  - Show the estimated time before sending ("~40 s on this connection").        Effort: S
+  - Drop files onto a device card to send to just that device.                  Effort: S
+  - A "Room is about to expire, keep it open?" prompt.                          Effort: S
+  - A full-screen QR code for scanning from across the room.                    Effort: S
+  - Retry with a different route (force relay) when direct keeps failing.       Effort: S
+
+
+-------------------------------------------------------------------------------------------
+THINGS TO AVOID
+-------------------------------------------------------------------------------------------
+
+  - Accounts that are required: they kill the "open and send" magic. Make them optional
+    at most.
+  - Ads or trackers next to people's private files: they destroy trust.
+  - Storing files on the server by default: it breaks the main promise and adds cost.
+  - Too many notifications or celebrations: keep a mute switch and respect reduced motion.
+
+
+-------------------------------------------------------------------------------------------
+SUGGESTED ORDER
+-------------------------------------------------------------------------------------------
+
+  Phase A (quick wins, mostly frontend):
+    PWA + Share Target, text and clipboard drop, fun names and avatars, celebrations,
+    local history with "Send again", invite via the share sheet.
+
+  Phase B (habit):
+    My devices / pairing, nearby devices, browser notifications, stats and badges,
+    media preview.
+
+  Phase C (bigger bets):
+    Party/event rooms and the shared album, room chat, folders and zip, end-to-end
+    encryption verification, opt-in encrypted "leave it for later".
