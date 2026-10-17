@@ -12,6 +12,16 @@ import { SendPanel } from "@/components/transfer/send-panel";
 import { StoragePanel } from "@/components/transfer/storage-panel";
 import type { TransferCardActions } from "@/components/transfer/transfer-card";
 import { TransferList } from "@/components/transfer/transfer-list";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -284,6 +294,15 @@ export function RoomView() {
     session.leave();
     router.push("/");
   };
+  // Host: device waiting for "Remove from room" confirmation.
+  const [removeTarget, setRemoveTarget] = useState<{ id: string; name: string } | null>(null);
+  const confirmRemove = () => {
+    const target = removeTarget;
+    setRemoveTarget(null);
+    if (!target) return;
+    void session.removeDevice(target.id).catch((error: unknown) => toast.error(userMessage(error)));
+  };
+
   const closeRoom = () => {
     void session
       .closeForEveryone()
@@ -384,6 +403,7 @@ export function RoomView() {
                   onSpeedTest: () => setSpeedTestPeer(id),
                   onPair: () => void session.requestPairing(id),
                   onRetry: (relayOnly) => session.retryPeer(id, relayOnly),
+                  onRemove: isHost ? () => setRemoveTarget({ id, name: deviceName(id) }) : undefined,
                 })}
               />
             )}
@@ -481,6 +501,21 @@ export function RoomView() {
         initialText={textDialog.text}
         onSend={(peerIds, text) => session.sendText(peerIds, text)}
       />
+      <AlertDialog open={removeTarget !== null} onOpenChange={(open) => !open && setRemoveTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove {removeTarget?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              They leave the room right away and any transfers with them stop. They can only come back by entering the room code
+              again.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmRemove}>Remove</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <ChatPanel
         open={chatOpen}
         onOpenChange={setChatOpen}

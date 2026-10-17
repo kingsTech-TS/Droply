@@ -9,6 +9,7 @@ import {
   RefreshCwIcon,
   SendIcon,
   ShieldCheckIcon,
+  UserXIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,6 +41,8 @@ export interface DeviceCardActions {
   onSpeedTest?: () => void;
   onPair?: () => void;
   onRetry?: (relayOnly: boolean) => void;
+  /** Host only: remove this device from the room (asks for confirmation first). */
+  onRemove?: () => void;
 }
 
 export interface DeviceCardProps extends DeviceCardActions {
@@ -49,7 +52,7 @@ export interface DeviceCardProps extends DeviceCardActions {
   paired?: boolean;
 }
 
-export function DeviceCard({ device, isSelf = false, link, paired = false, onSend, onDropFiles, onSendText, onSpeedTest, onPair, onRetry }: DeviceCardProps) {
+export function DeviceCard({ device, isSelf = false, link, paired = false, onSend, onDropFiles, onSendText, onSpeedTest, onPair, onRetry, onRemove }: DeviceCardProps) {
   const presence = PRESENCE[device.connection_state];
   const details = [device.operating_system, device.browser].filter(Boolean).join(" • ");
   const online = device.connection_state === "connected";
@@ -106,7 +109,7 @@ export function DeviceCard({ device, isSelf = false, link, paired = false, onSen
           </p>
           {details ? <p className="truncate text-sm text-muted-foreground">{details}</p> : null}
         </div>
-        {!isSelf && (onSendText || onSpeedTest || onPair || onRetry) ? (
+        {!isSelf && (onSendText || onSpeedTest || onPair || onRetry || onRemove) ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" aria-label={`More options for ${device.device_name}`}>
@@ -137,6 +140,15 @@ export function DeviceCard({ device, isSelf = false, link, paired = false, onSen
                   <RefreshCwIcon aria-hidden />
                   Reconnect through relay
                 </DropdownMenuItem>
+              ) : null}
+              {onRemove ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={onRemove} className="text-destructive focus:text-destructive">
+                    <UserXIcon aria-hidden />
+                    Remove from room
+                  </DropdownMenuItem>
+                </>
               ) : null}
               {link?.securityCode ? (
                 <>

@@ -123,3 +123,27 @@ test("a personal room link opens the owner's room", async ({ browser }) => {
   await ctxA.close();
   await ctxB.close();
 });
+
+test("the host can remove a device; guests can't", async ({ browser }) => {
+  const { a, b, close } = await twoDevicesInARoom(browser);
+
+  // B (a guest) has no remove option for the host.
+  const hostName = (await a.getByRole("article", { name: /\(this device\)/ }).locator("p").first().getAttribute("title"))!;
+  await b.getByRole("button", { name: `More options for ${hostName}` }).click();
+  await expect(b.getByRole("menuitem", { name: "Remove from room" })).toHaveCount(0);
+  await b.keyboard.press("Escape");
+
+  // A (the host) removes B after confirming.
+  await deviceMenu(a, "Test Phone", "Remove from room");
+  const confirm = a.getByRole("alertdialog", { name: "Remove Test Phone?" });
+  await confirm.getByRole("button", { name: "Remove" }).click();
+  await expect(a.getByRole("article", { name: /^Test Phone/ })).toHaveCount(0);
+  await expect(b.getByText("You were removed from this room.")).toBeVisible({ timeout: 20_000 });
+
+  // B's old session is gone: reloading the room doesn't put it back in.
+  await b.reload();
+  await expect(b.getByText("You're not in this room")).toBeVisible();
+  await expect(a.getByRole("article", { name: /^Test Phone/ })).toHaveCount(0);
+
+  await close();
+});

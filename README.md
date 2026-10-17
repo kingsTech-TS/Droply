@@ -46,7 +46,8 @@ Requirements: [prompt.md](prompt.md) · Design and decisions: [implementation.md
 - The device type (phone, tablet, laptop, desktop), OS and browser are detected for display
   only, and the device name can be edited.
 - A live device list shows presence (Online, Reconnecting, Offline) as text, not just color.
-- The host can close the room for everyone. Any device can leave.
+- The host can remove any device (with a confirmation) or close the room for everyone. Any
+  device can leave.
 
 **Sending and receiving**
 

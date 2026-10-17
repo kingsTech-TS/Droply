@@ -2,6 +2,7 @@
 // Created when the room page mounts, disposed when it unmounts. React reads its stores;
 // it never imports React.
 import { env } from "@/config/env";
+import { leaveRoom } from "@/lib/api/devices";
 import { closeRoom, getRoom, updateRoomSettings } from "@/lib/api/rooms";
 import { isApiError, userMessage } from "@/lib/api/errors";
 import { createTransfer, getTransfer, transferAction } from "@/lib/api/transfers";
@@ -340,6 +341,18 @@ export class RoomSession {
     this.signaling.leave();
     clearSession(this.session.roomId);
     this.dispose();
+  }
+
+  /**
+   * Host only: removes another device. The server revokes its token, closes its socket,
+   * cancels its unfinished transfers and tells everyone else (`peer_left`, reason `removed`).
+   */
+  async removeDevice(deviceId: string): Promise<void> {
+    if (deviceId === this.session.deviceId) return;
+    const name = this.deviceName(deviceId);
+    await leaveRoom(this.session.roomId, deviceId, this.session.token);
+    this.onPeerLeft(deviceId, "removed");
+    this.notices.emit("notice", { kind: "info", message: `${name} was removed from the room.` });
   }
 
   /** Host only: ends the room for everyone. */
