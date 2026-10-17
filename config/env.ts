@@ -17,7 +17,11 @@ function positiveInt(value: string | undefined, fallback: number): number {
 function url(value: string | undefined, devDefault: string, name: string): string {
   if (value) return stripTrailingSlash(value);
   if (process.env.NODE_ENV === "production") {
-    throw new Error(`${name} must be set for production builds.`);
+    throw new Error(
+      `${name} must be set for production builds. Set it in your hosting provider's environment ` +
+        `variables (e.g. Vercel → Project → Settings → Environment Variables) to your deployed ` +
+        `backend's URL, then redeploy. See .env.example.`,
+    );
   }
   return devDefault;
 }
