@@ -30,11 +30,11 @@ export function RoomHeader({ code, isHost, transfersActive, onLeave, onCloseRoom
   const [confirm, setConfirm] = useState<"leave" | "close" | null>(null);
   return (
     <header className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70">
-      <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-2 px-4 sm:px-6">
-        <Logo />
+      <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-2 px-4 sm:px-6 2xl:max-w-7xl">
+        <Logo compact />
         <div className="flex min-w-0 items-center gap-1 sm:gap-2">
           <span className="hidden text-sm text-muted-foreground sm:inline">Room</span>
-          <span className="font-mono text-sm font-semibold tracking-wider" aria-label={`Room ${code}`}>
+          <span className="whitespace-nowrap font-mono text-sm font-semibold tracking-wider" aria-label={`Room ${code}`}>
             {formatRoomCode(code)}
           </span>
           <Button

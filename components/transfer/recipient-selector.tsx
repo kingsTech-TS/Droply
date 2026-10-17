@@ -39,7 +39,7 @@ export function RecipientSelector({ devices, selected, onChange }: RecipientSele
           </div>
         ) : null}
       </div>
-      <ul className="grid gap-1">
+      <ul className="grid grid-cols-[minmax(0,1fr)] gap-1">
         {devices.map((device) => {
           const id = `recipient-${device.device_id}`;
           return (

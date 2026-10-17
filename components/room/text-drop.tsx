@@ -160,7 +160,7 @@ export function TextInbox({ messages, deviceName }: { messages: InboxMessage[]; 
       <h2 id="texts-heading" className="font-semibold">
         Texts
       </h2>
-      <ul className="grid gap-3">
+      <ul className="grid grid-cols-[minmax(0,1fr)] gap-3">
         {texts.map((message) => (
           <InboxItem key={message.id} message={message} from={message.peerIds.map(deviceName).join(", ") || "nobody"} />
         ))}

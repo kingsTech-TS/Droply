@@ -77,16 +77,16 @@ export function StartSharing() {
     <div className="space-y-3">
       <DropZone onFiles={(files) => void start(files)} disabled={busy} title={busy ? "Creating your room…" : "Drop files here"} />
       <ThemePicker value={theme} onChange={(t) => createTheme.set(t)} disabled={busy} />
-      <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
+      <div className="flex flex-col items-center gap-y-1 sm:flex-row sm:flex-wrap sm:justify-center sm:gap-x-2">
         <Button variant="link" onClick={() => void start([])} disabled={busy}>
           Create an empty room to receive
         </Button>
-        <span aria-hidden className="text-muted-foreground">·</span>
+        <span aria-hidden className="hidden text-muted-foreground sm:inline">·</span>
         <Button variant="link" onClick={() => void start([], { kind: "event" })} disabled={busy}>
           <PartyPopperIcon aria-hidden />
           Host an event
         </Button>
-        <span aria-hidden className="text-muted-foreground">·</span>
+        <span aria-hidden className="hidden text-muted-foreground sm:inline">·</span>
         <Button asChild variant="link">
           <Link href="/speed-test">
             <GaugeIcon aria-hidden />

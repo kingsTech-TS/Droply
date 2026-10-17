@@ -28,6 +28,8 @@ export interface FileMetadataIn {
 export interface TransferCreate {
   recipient_ids: string[];
   file: FileMetadataIn;
+  /** Same for files sent together, so recipients get one request card for them. */
+  batch_id?: string;
 }
 
 export interface TransferActionRequest {
@@ -72,6 +74,7 @@ export interface TransferView {
   file: FileMetadataView;
   encryption: EncryptionView | null;
   mode: "p2p" | "cloud";
+  batch_id?: string | null;
   status: TransferStatus;
   created_at: string;
   expires_at: string;

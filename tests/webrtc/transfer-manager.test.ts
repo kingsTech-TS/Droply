@@ -240,6 +240,37 @@ describe("TransferManager end to end", () => {
     }
   });
 
+  it("files sent together are one request even when they arrive slowly, and later ones follow the answer", async () => {
+    const { get, backend } = world(["dv_aaaaaaaaaaaaaaaaaaaa", "dv_bbbbbbbbbbbbbbbbbbbb"], { backendLimit: 2 });
+    const a = get("dv_aaaaaaaaaaaaaaaaaaaa");
+    const b = get("dv_bbbbbbbbbbbbbbbbbbbb");
+    // With a limit of 2 unfinished transfers, the sender creates the 5 files in rounds.
+    a.manager.send(
+      Array.from({ length: 5 }, (_, i) => makeFile(`p${i}.jpg`, 20 * KiB, i)),
+      [b.id],
+    );
+    await until(() => requests(b).length > 0, 8000, "first request");
+    await sleep(2500); // longer than the timing fallback
+    expect(requests(b)).toHaveLength(1);
+    await b.manager.accept(requests(b)[0]!.key);
+    // The rest arrive after accepting and are accepted without another card.
+    await until(() => incoming(b).filter((i) => i.save === "ready").length === 5, 15000, "all 5 received");
+    expect(requests(b)).toHaveLength(0);
+    expect(backend.maxUnfinishedSeen).toBeLessThanOrEqual(2);
+  });
+
+  it("still works with servers that reject batch_id", async () => {
+    const { get, backend } = world(["dv_aaaaaaaaaaaaaaaaaaaa", "dv_bbbbbbbbbbbbbbbbbbbb"]);
+    backend.rejectBatchIds = true;
+    const a = get("dv_aaaaaaaaaaaaaaaaaaaa");
+    const b = get("dv_bbbbbbbbbbbbbbbbbbbb");
+    a.manager.send([makeFile("x.bin", 10 * KiB), makeFile("y.bin", 10 * KiB, 2)], [b.id]);
+    await until(() => requests(b)[0]?.transferIds.length === 2, 8000, "both files in one request");
+    expect(requests(b)).toHaveLength(1);
+    await acceptAll(b);
+    await until(() => incoming(b).filter((i) => i.save === "ready").length === 2, 8000, "received");
+  });
+
   it("pauses and resumes from the receiver's gaps without restarting", async () => {
     const { get } = world(["dv_aaaaaaaaaaaaaaaaaaaa", "dv_bbbbbbbbbbbbbbbbbbbb"], { channel: { bytesPerTick: 32 * KiB, tickMs: 1 } });
     const a = get("dv_aaaaaaaaaaaaaaaaaaaa");

@@ -187,7 +187,7 @@ export function Benchmark() {
   const remaining = live && throughput ? (live.total - live.verified) / throughput : null;
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
       <Card>
         <CardHeader>
           <CardTitle>Synthetic transfer</CardTitle>

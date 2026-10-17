@@ -43,7 +43,7 @@ export function NearbyRooms() {
         <RadarIcon aria-hidden className="size-5 text-primary" />
         Nearby
       </h2>
-      <ul className="grid gap-2">
+      <ul className="grid grid-cols-[minmax(0,1fr)] gap-2">
         {rooms.map((room) => (
           <li key={room.room_id} className="flex items-center gap-3 rounded-xl border bg-card p-3">
             <DeviceAvatar name={room.host_name} type={room.host_device_type} />

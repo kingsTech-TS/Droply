@@ -355,7 +355,7 @@ export function RoomView() {
     <>
       <RoomHeader code={room.roomCode} isHost={isHost} transfersActive={anyActive} onLeave={leave} onCloseRoom={closeRoom} />
       <div className={cn("w-full bg-gradient-to-r from-primary via-electric to-primary/30", themed ? "h-1.5" : "h-1 opacity-60")} aria-hidden />
-      <main className="mx-auto w-full max-w-6xl flex-1 space-y-6 px-4 py-6 sm:px-6">
+      <main className="mx-auto w-full max-w-6xl flex-1 space-y-6 px-4 py-6 sm:px-6 2xl:max-w-7xl">
         {themed ? (
           <div className="flex items-center gap-4 overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/12 via-electric/8 to-transparent p-4 sm:p-5">
             <span aria-hidden className="text-4xl drop-shadow-sm sm:text-5xl motion-safe:animate-[bounce_1s_ease-in-out_1]">
@@ -383,7 +383,7 @@ export function RoomView() {
           </div>
         ) : null}
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]">
           <aside className={`min-w-0 space-y-6 ${alone ? "order-1" : "order-2"} lg:order-1`}>
             <RoomSharePanel
               code={room.roomCode}

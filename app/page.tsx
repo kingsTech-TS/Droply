@@ -69,7 +69,7 @@ export default function Home() {
             <h2 id="speed-heading" className="mb-8 text-center text-2xl font-semibold tracking-tight">
               Built for speed
             </h2>
-            <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <ul className="grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {FEATURES.map(({ icon: Icon, title, body }) => (
                 <li key={title} className="rounded-xl border bg-card p-5">
                   <Icon aria-hidden className="mb-3 size-6 text-primary" />
@@ -86,7 +86,7 @@ export default function Home() {
             <h2 id="how-heading" className="mb-8 text-center text-2xl font-semibold tracking-tight">
               How it works
             </h2>
-            <ol className="grid gap-6 sm:grid-cols-3">
+            <ol className="grid grid-cols-[minmax(0,1fr)] gap-6 sm:grid-cols-3">
               {STEPS.map(({ icon: Icon, title, body }, index) => (
                 <li key={title} className="flex flex-col items-center gap-3 text-center">
                   <span className="font-mono text-sm text-muted-foreground">{String(index + 1).padStart(2, "0")}</span>

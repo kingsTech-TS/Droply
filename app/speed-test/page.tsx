@@ -22,7 +22,7 @@ export default function SpeedTestPage() {
           </p>
         </div>
         <SpeedTestStart />
-        <ol className="grid w-full gap-3 text-left sm:grid-cols-3">
+        <ol className="grid w-full grid-cols-[minmax(0,1fr)] gap-3 text-left sm:grid-cols-3">
           {[
             ["1", "Start the test on this device."],
             ["2", "Scan the QR code with your other device."],

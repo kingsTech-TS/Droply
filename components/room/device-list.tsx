@@ -29,7 +29,7 @@ export function DeviceList({ devices, selfId, links, actionsFor, pairedNames }: 
           {online === 1 ? "1 other device online" : `${online} other devices online`}
         </p>
       </div>
-      <ul className="grid gap-3">
+      <ul className="grid grid-cols-[minmax(0,1fr)] gap-3">
         <AnimatePresence initial={false}>
           {others.map((device) => (
             <motion.li

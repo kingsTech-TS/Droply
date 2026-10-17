@@ -239,7 +239,9 @@ interface IncomingRecord {
 const PUBLISH_INTERVAL_MS = 200;
 const TUNE_INTERVAL_MS = 1000;
 const CHECKPOINT_INTERVAL_MS = 2000;
-const REQUEST_GROUP_WINDOW_MS = 400;
+// Without a batch id (older servers), requests from one sender this close together are one
+// card. Transfers are created one after another, so this has to cover a server round trip.
+const REQUEST_GROUP_WINDOW_MS = 2000;
 const MIME_PATTERN = /^[A-Za-z0-9][\w.+-]*\/[\w.+-]+$/;
 const SENDABLE: ReadonlySet<LegStatus> = new Set(["accepted", "connecting", "retrying", "transferring"]);
 /** Speed tests are synthetic; cap them so a peer can't be flooded. */
@@ -264,6 +266,10 @@ export class TransferManager {
   private readonly earlyViews = new Map<string, TransferView>();
   private readonly requests = new Map<string, IncomingRequest>();
   private readonly lastRequestKey = new Map<string, { key: string; at: number }>();
+  /** The user's answer per incoming batch, applied to files of it that arrive later. */
+  private readonly batchDecisions = new Map<string, { accepted: boolean; directory: DirectoryHandleLike | null }>();
+  /** The server rejected `batch_id` (older backend): stop sending it. */
+  private batchIdUnsupported = false;
   private readonly trusted = new Set<string>();
   private readonly outSlots = new Map<string, Map<number, FileSender>>();
   private readonly inSlots = new Map<string, Map<number, FileReceiver>>();
@@ -517,6 +523,7 @@ export class TransferManager {
     const request = this.requests.get(key);
     if (!request) return;
     this.requests.delete(key);
+    this.batchDecisions.set(key, { accepted: true, directory: options.directory ?? null });
     if (options.trust) this.trusted.add(request.senderId);
     this.publish();
     await Promise.all(
@@ -531,6 +538,7 @@ export class TransferManager {
     const request = this.requests.get(key);
     if (!request) return;
     this.requests.delete(key);
+    this.batchDecisions.set(key, { accepted: false, directory: null });
     this.publish();
     await Promise.all(
       request.transferIds.map(async (id) => {
@@ -853,7 +861,7 @@ export class TransferManager {
 
   private async createOnServer(record: OutgoingRecord): Promise<boolean> {
     try {
-      const view = await this.options.api.create({
+      const body: TransferCreate = {
         recipient_ids: [...record.legs.keys()],
         file: {
           file_name: record.fileName,
@@ -862,7 +870,19 @@ export class TransferManager {
           chunk_size: record.chunkSize,
           total_chunks: record.totalChunks,
         },
-      });
+      };
+      let view: TransferView;
+      if (this.batchIdUnsupported) {
+        view = await this.options.api.create(body);
+      } else {
+        try {
+          view = await this.options.api.create({ ...body, batch_id: record.batchId });
+        } catch (error) {
+          if (!(isApiError(error) && error.status === 422)) throw error;
+          this.batchIdUnsupported = true;
+          view = await this.options.api.create(body);
+        }
+      }
       // Cancelled while the request was in flight.
       if ([...record.legs.values()].every((l) => l.status === "cancelled")) {
         record.transferId = view.transfer_id;
@@ -1251,14 +1271,29 @@ export class TransferManager {
   }
 
   private addToRequestGroup(record: IncomingRecord): void {
-    // Requests from one sender that arrive close together form one batch (one card).
+    // Files the sender sent together form one batch (one card): by the sender's batch id,
+    // or, from servers without it, by arriving close together.
     const now = Date.now();
-    const last = this.lastRequestKey.get(record.senderId);
-    const key = last && now - last.at < REQUEST_GROUP_WINDOW_MS ? last.key : randomId("rq_");
-    this.lastRequestKey.set(record.senderId, { key, at: now });
+    let key: string;
+    const batch = record.view.batch_id;
+    if (batch) {
+      key = `rq_${record.senderId}_${batch}`;
+    } else {
+      const last = this.lastRequestKey.get(record.senderId);
+      key = last && now - last.at < REQUEST_GROUP_WINDOW_MS ? last.key : randomId("rq_");
+      this.lastRequestKey.set(record.senderId, { key, at: now });
+    }
     record.batchId = key;
     if (this.trusted.has(record.senderId) || this.options.trustAll) {
       void this.acceptIncoming(record, null);
+      return;
+    }
+    // Later files of a batch the user already answered (the sender creates transfers a
+    // few at a time) follow that answer instead of asking again.
+    const decision = this.batchDecisions.get(key);
+    if (decision) {
+      if (decision.accepted) void this.acceptIncoming(record, decision.directory);
+      else void this.actIncoming(record, "reject");
       return;
     }
     let request = this.requests.get(key);

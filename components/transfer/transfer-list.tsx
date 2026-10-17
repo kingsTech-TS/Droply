@@ -47,7 +47,7 @@ export function TransferList({ items, deviceName, links, actionsFor, mediaFor, o
           ) : null}
         </div>
       </div>
-      <ul className="grid gap-3">
+      <ul className="grid grid-cols-[minmax(0,1fr)] gap-3">
         <AnimatePresence initial={false}>
           {items.map((item) => (
             <motion.li

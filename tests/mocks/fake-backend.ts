@@ -57,6 +57,8 @@ export class FakeBackend {
   readonly listeners = new Map<string, (event: TransferEvent) => void>();
   /** Highest number of unfinished transfers any sender had at once. */
   maxUnfinishedSeen = 0;
+  /** Behave like a server that predates `batch_id` (rejects the unknown field). */
+  rejectBatchIds = false;
 
   constructor(private readonly maxActivePerDevice = 20) {}
 
@@ -90,6 +92,9 @@ export class FakeBackend {
   }
 
   private create(senderId: string, body: TransferCreate): TransferView {
+    if (this.rejectBatchIds && body.batch_id !== undefined) {
+      throw new ApiError(422, "VALIDATION_ERROR", "Extra inputs are not permitted");
+    }
     if (this.unfinished(senderId) >= this.maxActivePerDevice) {
       throw new ApiError(429, "TRANSFER_LIMIT_REACHED", "Too many active transfers for this device.");
     }
@@ -123,6 +128,7 @@ export class FakeBackend {
       },
       encryption: null,
       mode: "p2p",
+      batch_id: body.batch_id ?? null,
       status: "pending",
       created_at: now,
       expires_at: new Date(Date.now() + 86_400_000).toISOString(),

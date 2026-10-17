@@ -17,11 +17,11 @@ export function LogoMark({ className }: { className?: string }) {
   );
 }
 
-export function Logo({ href = "/" }: { href?: string }) {
+export function Logo({ href = "/", compact = false }: { href?: string; compact?: boolean }) {
   return (
-    <Link href={href} className="inline-flex min-h-11 items-center gap-2 rounded-lg font-semibold tracking-tight">
+    <Link href={href} className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-lg font-semibold tracking-tight">
       <LogoMark />
-      <span className="text-lg">{brand.name}</span>
+      <span className={cn("text-lg", compact && "max-[400px]:sr-only")}>{brand.name}</span>
     </Link>
   );
 }

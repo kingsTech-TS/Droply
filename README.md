@@ -57,8 +57,8 @@ Requirements: [prompt.md](prompt.md) · Design and decisions: [implementation.md
 - Multiple files, drag and drop, and folder selection where the browser supports it.
 - Choose recipients, with Select all and Clear all. When only one device is online, it's
   selected automatically.
-- Recipients must accept. Requests that arrive together are grouped into one "Incoming files"
-  card. An optional "auto-accept from this device in this room" switch skips the prompt.
+- Recipients must accept. Files sent together are grouped into one "Incoming files" card (by
+  a batch id the sender attaches), and files of that batch that arrive later follow the answer. An optional "auto-accept from this device in this room" switch skips the prompt.
 - One file can go to several recipients, and each recipient progresses independently.
 - Pause, resume, cancel (with a confirmation for large active transfers), retry and dismiss.
 - Received files are saved with the browser's normal download, or straight into a folder you
@@ -90,7 +90,8 @@ Requirements: [prompt.md](prompt.md) · Design and decisions: [implementation.md
 
 **Experience**
 
-- Mobile-first layout: one column on phones, two columns on desktop. Touch targets are at
+- Mobile-first layout: one column on phones and tablets, two columns from 1024 px, a little
+  wider on very large screens. Checked from 320 px phones and landscape phones up to 1920 px. Touch targets are at
   least 44 px and there's no horizontal scrolling from 320 px up.
 - Light and dark themes with no flash on load, and a theme toggle.
 - Subtle animations (devices joining, the QR code, drop zone, completion) that respect

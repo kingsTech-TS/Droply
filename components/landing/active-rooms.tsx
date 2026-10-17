@@ -114,7 +114,7 @@ export function ActiveRooms() {
         <DoorOpenIcon aria-hidden className="size-5 text-primary" />
         Your active rooms
       </h2>
-      <ul className="grid gap-2">
+      <ul className="grid grid-cols-[minmax(0,1fr)] gap-2">
         {visible.map((room) => {
           const live = status.kind === "known" ? status.rooms.get(room.roomId) : undefined;
           const theme = THEME_STYLES[live?.theme ?? room.theme];

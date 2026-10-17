@@ -109,11 +109,11 @@ export function TransferCard({ item, deviceName, link, actions, media }: Transfe
           <p className="truncate font-medium" title={item.fileName}>
             {item.fileName}
           </p>
-          <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-            {outgoing ? <ArrowUpIcon aria-hidden className="size-3.5" /> : <ArrowDownIcon aria-hidden className="size-3.5" />}
-            <span className="truncate">{peerText}</span>
-            <span aria-hidden>·</span>
-            <span>{formatBytes(item.fileSize)}</span>
+          <p className="flex min-w-0 items-center gap-x-1.5 text-xs text-muted-foreground">
+            {outgoing ? <ArrowUpIcon aria-hidden className="size-3.5 shrink-0" /> : <ArrowDownIcon aria-hidden className="size-3.5 shrink-0" />}
+            <span className="min-w-0 truncate">{peerText}</span>
+            <span aria-hidden className="shrink-0">·</span>
+            <span className="shrink-0 whitespace-nowrap">{formatBytes(item.fileSize)}</span>
             {item.relativePath ? (
               <span className="inline-flex min-w-0 items-center gap-1">
                 <FolderIcon aria-hidden className="size-3.5" />

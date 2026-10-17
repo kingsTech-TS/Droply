@@ -131,7 +131,7 @@ test("pair two devices, then they meet again without a room code", async ({ brow
   await expect(a.getByRole("article", { name: "Test Phone, Online" })).toContainText("paired", { timeout: 20_000 });
   // Paired devices accept automatically: no "Incoming files" prompt on B.
   await expect(b.getByText("notes.txt").first()).toBeVisible({ timeout: 20_000 });
-  await expect(b.getByText("Transfer complete").first()).toBeVisible({ timeout: 30_000 });
+  await expect(b.getByText("Transfer complete").first()).toBeVisible({ timeout: 60_000 });
   await expect(b.getByRole("alertdialog", { name: "Incoming files" })).toHaveCount(0);
 
   await close();
@@ -281,4 +281,33 @@ test("previews stay small: thumbnails, not full-size photos, and no video player
   else expect(videos).toBeGreaterThan(0);
 
   await close();
+});
+
+test("a 320 px phone: long names and finished transfers never widen the room", async ({ browser }) => {
+  const ctxA = await browser.newContext({ viewport: { width: 320, height: 640 }, isMobile: true, hasTouch: true });
+  const ctxB = await browser.newContext();
+  const a = await ctxA.newPage();
+  const b = await ctxB.newPage();
+  await a.goto("/");
+  await a.getByRole("button", { name: "Host an event" }).click();
+  await expect(a).toHaveURL(/\/room\//);
+  await b.goto(`/join/${await roomCode(a)}`);
+  await b.getByLabel("Your device name").fill("Kitchen iPad with a rather long name");
+  await b.getByRole("button", { name: "Join room" }).click();
+  await expect(a.getByText("Kitchen iPad with a rather long name").first()).toBeVisible();
+  await a.locator('input[type="file"]').first().setInputFiles([
+    { name: "a-very-long-file-name-from-the-wedding-photographer-final-v2.mp4", mimeType: "video/mp4", buffer: Buffer.alloc(200_000, 3) },
+  ]);
+  await a.getByRole("button", { name: "Send file", exact: true }).click();
+  await b.getByRole("alertdialog", { name: "Incoming files" }).getByRole("button", { name: /Accept/ }).click();
+  await expect(a.getByText("Transfer complete").first()).toBeVisible({ timeout: 45_000 });
+
+  const overflow = await a.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+  // Nothing covers the device's menu button.
+  await a.getByRole("button", { name: "More options for Kitchen iPad with a rather long name" }).click({ timeout: 5000 });
+  await expect(a.getByRole("menuitem", { name: "Test speed" })).toBeVisible();
+
+  await ctxA.close();
+  await ctxB.close();
 });

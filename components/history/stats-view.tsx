@@ -107,7 +107,7 @@ export function StatsView() {
         <h2 id="badges-heading" className="text-xl font-semibold">
           Badges
         </h2>
-        <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <ul className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {earned.map((b) => (
             <li
               key={b.id}
