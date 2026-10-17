@@ -129,8 +129,12 @@ Requirements: [prompt.md](prompt.md) · Design and decisions: [implementation.md
   connection, verified and thrown away.
 - **Text drop** and **room chat** over the encrypted DataChannel (the server never sees them),
   and **reactions** (👍 ❤️ 😂 🔥 🎉 🙏) on received files.
-- **Event rooms** (up to 50 devices) with **themes**, a delivery roster for big audiences, a
-  full-screen *Present* QR code and *Invite* through the share sheet.
+- **Room themes** (Party, Birthday, Wedding, Gaming, Study, Ocean, Sunset), picked when
+  creating a room (the home page previews it) or later by the host. The whole room follows the
+  theme for every device: colors, header, buttons, dialogs, background and confetti, with
+  WCAG AA contrast in light and dark mode.
+- **Event rooms** (up to 50 devices), a delivery roster for big audiences, a full-screen
+  *Present* QR code and *Invite* through the share sheet.
 - **Album** of received photos and videos, with previews only for files whose first bytes are
   a real raster image or video (never SVG or HTML).
 - **Folders keep their structure** (sanitized paths), *Save all as .zip*, and *Send smaller
