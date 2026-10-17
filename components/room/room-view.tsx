@@ -18,6 +18,7 @@ import { useWakeLock } from "@/hooks/use-wake-lock";
 import { userMessage } from "@/lib/api/errors";
 import { takePendingFiles } from "@/lib/session/pending-files";
 import { randomId } from "@/lib/utils/id";
+import { joinUrlFor } from "@/lib/utils/join-url";
 import type { Notice, TransferSnapshot } from "@/lib/webrtc/transfer-manager";
 import { isActive } from "@/lib/webrtc/transfer-view";
 import { ConnectingAnimation } from "./connecting-animation";
@@ -188,7 +189,7 @@ export function RoomView() {
           <aside className={`min-w-0 space-y-6 ${alone ? "order-1" : "order-2"} lg:order-1`}>
             <RoomSharePanel
               code={room.roomCode}
-              joinUrl={room.joinUrl}
+              joinUrl={joinUrlFor(room.roomCode, room.joinUrl)}
               expiresAt={room.expiresAt}
               open={shareOpen}
               onOpenChange={setShareOpen}
