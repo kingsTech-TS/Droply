@@ -1,0 +1,233 @@
+// @vitest-environment node
+// End-to-end transfer flows: real TransferManagers on both sides, real FileSender/FileReceiver
+// and protocol over simulated DataChannels, against an in-memory backend that follows the
+// server's state machine and event fan-out.
+import { afterEach, describe, expect, it } from "vitest";
+import { MemorySink } from "@/lib/storage/sinks/memory-sink";
+import type { SinkFactory } from "@/lib/storage/sinks/factory";
+import { sha256Hex } from "@/lib/utils/hash";
+import { MemoryResumeStore } from "@/lib/webrtc/resume-manager";
+import { TransferManager, type Notice, type TransferSnapshot } from "@/lib/webrtc/transfer-manager";
+import { FakeBackend, TEST_CONFIG } from "../mocks/fake-backend";
+import { FakeNetwork } from "../mocks/fake-peers";
+import type { FakeChannelOptions } from "../mocks/rtc";
+
+const KiB = 1024;
+
+function makeFile(name: string, size: number, seed = 1): File {
+  const bytes = new Uint8Array(size);
+  for (let i = 0; i < size; i += 1) bytes[i] = (i * 31 + seed * 7 + (i >> 9)) & 0xff;
+  return new File([bytes], name, { type: "application/octet-stream", lastModified: 1_700_000_000_000 });
+}
+
+const memorySinks: SinkFactory = {
+  create: async (request) => new MemorySink(request.totalChunks),
+  fits: async () => true,
+};
+
+interface Device {
+  id: string;
+  manager: TransferManager;
+  notices: Notice[];
+}
+
+const managers: TransferManager[] = [];
+
+function world(ids: string[], options: { channel?: FakeChannelOptions; backendLimit?: number; maxActive?: number } = {}) {
+  const backend = new FakeBackend(options.backendLimit ?? 20);
+  const network = new FakeNetwork(options.channel ?? {});
+  const devices = new Map<string, Device>();
+  for (const id of ids) {
+    const notices: Notice[] = [];
+    const manager = new TransferManager({
+      selfId: id,
+      roomId: "rm_test",
+      config: TEST_CONFIG,
+      api: backend.apiFor(id),
+      peers: network.node(id),
+      send: backend.wsFor(id),
+      resume: new MemoryResumeStore(),
+      sinks: memorySinks,
+      mobile: false,
+      deviceName: (d) => d,
+      maxActiveTransfers: options.maxActive,
+    });
+    manager.notices.on("notice", (n) => notices.push(n));
+    backend.connect(id, (event) => manager.handleEvent(event));
+    managers.push(manager);
+    devices.set(id, { id, manager, notices });
+  }
+  const get = (id: string) => devices.get(id)!;
+  return { backend, network, get };
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function until(condition: () => boolean, timeoutMs = 8000, label = "condition"): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!condition()) {
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${label}`);
+    await sleep(5);
+  }
+}
+
+const items = (d: Device): TransferSnapshot[] => d.manager.store.getSnapshot().items;
+const incoming = (d: Device) => items(d).filter((i) => i.direction === "incoming");
+const outgoing = (d: Device) => items(d).filter((i) => i.direction === "outgoing");
+const requests = (d: Device) => d.manager.store.getSnapshot().requests;
+
+async function acceptAll(d: Device): Promise<void> {
+  await until(() => requests(d).length > 0, 8000, `request on ${d.id}`);
+  for (const request of requests(d)) await d.manager.accept(request.key);
+}
+
+async function savedBytesOf(d: Device, fileName: string): Promise<string> {
+  const manager = d.manager as unknown as { incoming: Map<string, { fileName: string; finalFile: File | null }> };
+  const record = [...manager.incoming.values()].find((r) => r.fileName === fileName);
+  if (!record?.finalFile) throw new Error(`no final file for ${fileName}`);
+  return sha256Hex(await record.finalFile.arrayBuffer());
+}
+
+afterEach(() => {
+  for (const manager of managers.splice(0)) manager.dispose();
+});
+
+describe("TransferManager end to end", () => {
+  it("sends one file: request → accept → P2P → verified → complete on both sides", async () => {
+    const { get } = world(["dv_aaaaaaaaaaaaaaaaaaaa", "dv_bbbbbbbbbbbbbbbbbbbb"]);
+    const a = get("dv_aaaaaaaaaaaaaaaaaaaa");
+    const b = get("dv_bbbbbbbbbbbbbbbbbbbb");
+    const file = makeFile("report.pdf", 300 * KiB + 17);
+    expect(a.manager.send([file], [b.id])).toBe(1);
+
+    await acceptAll(b);
+    await until(() => incoming(b)[0]?.save === "ready", 8000, "receiver ready");
+    await until(() => outgoing(a)[0]?.legs[0]?.status === "completed", 8000, "sender completed");
+
+    const received = incoming(b)[0]!;
+    expect(received.verification).toBe("verified");
+    expect(received.legs[0]?.status).toBe("completed");
+    expect(received.legs[0]?.verifiedBytes).toBe(file.size);
+    expect(await savedBytesOf(b, "report.pdf")).toBe(await sha256Hex(await file.arrayBuffer()));
+    expect(a.notices.some((n) => n.kind === "success")).toBe(true);
+    expect(b.notices.some((n) => n.kind === "success" && n.message.includes("report.pdf"))).toBe(true);
+  });
+
+  it("groups several files from one sender into one request and receives them all", async () => {
+    const { get } = world(["dv_aaaaaaaaaaaaaaaaaaaa", "dv_bbbbbbbbbbbbbbbbbbbb"]);
+    const a = get("dv_aaaaaaaaaaaaaaaaaaaa");
+    const b = get("dv_bbbbbbbbbbbbbbbbbbbb");
+    const files = [makeFile("a.bin", 100 * KiB, 1), makeFile("b.bin", 70 * KiB, 2), makeFile("c.bin", 1, 3)];
+    a.manager.send(files, [b.id]);
+    await until(() => requests(b)[0]?.transferIds.length === 3, 8000, "grouped request");
+    expect(requests(b)).toHaveLength(1);
+    expect(requests(b)[0]?.totalBytes).toBe(files.reduce((s, f) => s + f.size, 0));
+    await b.manager.accept(requests(b)[0]!.key);
+    await until(() => incoming(b).filter((i) => i.save === "ready").length === 3, 8000, "all received");
+    for (const file of files) {
+      expect(await savedBytesOf(b, file.name)).toBe(await sha256Hex(await file.arrayBuffer()));
+    }
+    // One batch-level notification, not one per file.
+    expect(b.notices.filter((n) => n.kind === "success")).toHaveLength(1);
+  });
+
+  it("delivers to multiple recipients independently (one declines)", async () => {
+    const { get } = world(["dv_aaaaaaaaaaaaaaaaaaaa", "dv_bbbbbbbbbbbbbbbbbbbb", "dv_cccccccccccccccccccc"]);
+    const a = get("dv_aaaaaaaaaaaaaaaaaaaa");
+    const b = get("dv_bbbbbbbbbbbbbbbbbbbb");
+    const c = get("dv_cccccccccccccccccccc");
+    const file = makeFile("video.mp4", 200 * KiB);
+    a.manager.send([file], [b.id, c.id]);
+    await acceptAll(b);
+    await until(() => requests(c).length > 0);
+    await c.manager.decline(requests(c)[0]!.key);
+    await until(() => incoming(b)[0]?.save === "ready", 8000, "b received");
+    await until(() => {
+      const legs = outgoing(a)[0]?.legs ?? [];
+      return legs.find((l) => l.deviceId === b.id)?.status === "completed" && legs.find((l) => l.deviceId === c.id)?.status === "rejected";
+    }, 8000, "leg statuses");
+    expect(await savedBytesOf(b, "video.mp4")).toBe(await sha256Hex(await file.arrayBuffer()));
+  });
+
+  it("stays under the server's per-device transfer limit when sending many files", async () => {
+    const { get, backend } = world(["dv_aaaaaaaaaaaaaaaaaaaa", "dv_bbbbbbbbbbbbbbbbbbbb"], { backendLimit: 3, maxActive: 2 });
+    const a = get("dv_aaaaaaaaaaaaaaaaaaaa");
+    const b = get("dv_bbbbbbbbbbbbbbbbbbbb");
+    b.manager.setTrusted(a.id, true); // auto-accept, so groups flow without clicks
+    const files = Array.from({ length: 7 }, (_, i) => makeFile(`f${i}.bin`, 20 * KiB, i));
+    a.manager.send(files, [b.id]);
+    await until(() => incoming(b).filter((i) => i.save === "ready").length === 7, 15000, "all 7 received");
+    expect(backend.maxUnfinishedSeen).toBeLessThanOrEqual(2);
+    expect(outgoing(a).every((i) => i.legs[0]?.status === "completed")).toBe(true);
+  });
+
+  it("pauses and resumes from the receiver's gaps without restarting", async () => {
+    const { get } = world(["dv_aaaaaaaaaaaaaaaaaaaa", "dv_bbbbbbbbbbbbbbbbbbbb"], { channel: { bytesPerTick: 32 * KiB, tickMs: 1 } });
+    const a = get("dv_aaaaaaaaaaaaaaaaaaaa");
+    const b = get("dv_bbbbbbbbbbbbbbbbbbbb");
+    const file = makeFile("big.iso", 2 * 1024 * KiB);
+    a.manager.send([file], [b.id]);
+    await acceptAll(b);
+    await until(() => (incoming(b)[0]?.legs[0]?.verifiedBytes ?? 0) > 256 * KiB, 8000, "some progress");
+    await a.manager.pause(outgoing(a)[0]!.localId);
+    await until(() => incoming(b)[0]?.legs[0]?.status === "paused", 8000, "receiver paused");
+    const atPause = incoming(b)[0]!.legs[0]!.verifiedBytes;
+    expect(atPause).toBeLessThan(file.size);
+    await sleep(50);
+    // Paused means paused: nothing more arrives.
+    expect(incoming(b)[0]!.legs[0]!.verifiedBytes).toBe(atPause);
+
+    await a.manager.resume(outgoing(a)[0]!.localId);
+    await until(() => incoming(b)[0]?.save === "ready", 15000, "completed after resume");
+    expect(await savedBytesOf(b, "big.iso")).toBe(await sha256Hex(await file.arrayBuffer()));
+  });
+
+  it("recovers from a dropped connection: auto-pause, then auto-resume when the link is back", async () => {
+    const { get, network } = world(["dv_aaaaaaaaaaaaaaaaaaaa", "dv_bbbbbbbbbbbbbbbbbbbb"], { channel: { bytesPerTick: 32 * KiB, tickMs: 1 } });
+    const a = get("dv_aaaaaaaaaaaaaaaaaaaa");
+    const b = get("dv_bbbbbbbbbbbbbbbbbbbb");
+    const file = makeFile("photos.zip", 2 * 1024 * KiB, 5);
+    a.manager.send([file], [b.id]);
+    await acceptAll(b);
+    await until(() => (incoming(b)[0]?.legs[0]?.verifiedBytes ?? 0) > 256 * KiB, 8000, "some progress");
+
+    network.drop(a.id, b.id);
+    await until(() => outgoing(a)[0]?.legs[0]?.status === "paused", 8000, "auto-paused");
+    expect(outgoing(a)[0]?.legs[0]?.autoResume).toBe(true);
+
+    network.restore(a.id, b.id);
+    await until(() => incoming(b)[0]?.save === "ready", 15000, "completed after reconnect");
+    expect(await savedBytesOf(b, "photos.zip")).toBe(await sha256Hex(await file.arrayBuffer()));
+  });
+
+  it("cancels from the receiver side and stops the sender", async () => {
+    const { get } = world(["dv_aaaaaaaaaaaaaaaaaaaa", "dv_bbbbbbbbbbbbbbbbbbbb"], { channel: { bytesPerTick: 16 * KiB, tickMs: 1 } });
+    const a = get("dv_aaaaaaaaaaaaaaaaaaaa");
+    const b = get("dv_bbbbbbbbbbbbbbbbbbbb");
+    a.manager.send([makeFile("movie.mkv", 2 * 1024 * KiB)], [b.id]);
+    await acceptAll(b);
+    await until(() => (incoming(b)[0]?.legs[0]?.verifiedBytes ?? 0) > 64 * KiB, 8000, "some progress");
+    await b.manager.cancel(incoming(b)[0]!.localId);
+    await until(() => outgoing(a)[0]?.legs[0]?.status === "cancelled", 8000, "sender sees cancel");
+    expect(incoming(b)[0]?.legs[0]?.status).toBe("cancelled");
+  });
+
+  it("lets the sender cancel a queued file before it reaches the server", async () => {
+    const { get } = world(["dv_aaaaaaaaaaaaaaaaaaaa", "dv_bbbbbbbbbbbbbbbbbbbb"], { backendLimit: 1, maxActive: 1 });
+    const a = get("dv_aaaaaaaaaaaaaaaaaaaa");
+    const b = get("dv_bbbbbbbbbbbbbbbbbbbb");
+    a.manager.send([makeFile("one.bin", 10 * KiB), makeFile("two.bin", 10 * KiB)], [b.id]);
+    await until(() => outgoing(a).some((i) => i.legs[0]?.status === "queued"), 8000, "a queued file");
+    const queued = outgoing(a).find((i) => i.legs[0]?.status === "queued")!;
+    await a.manager.cancel(queued.localId);
+    expect(outgoing(a).find((i) => i.localId === queued.localId)?.legs[0]?.status).toBe("cancelled");
+    expect(queued.transferId).toBeNull();
+  });
+
+  it("skips empty files with a warning", () => {
+    const { get } = world(["dv_aaaaaaaaaaaaaaaaaaaa", "dv_bbbbbbbbbbbbbbbbbbbb"]);
+    const a = get("dv_aaaaaaaaaaaaaaaaaaaa");
+    expect(a.manager.send([new File([], "empty.txt")], ["dv_bbbbbbbbbbbbbbbbbbbb"])).toBe(0);
+    expect(a.notices.some((n) => n.kind === "warning")).toBe(true);
+  });
+});

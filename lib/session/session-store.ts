@@ -1,0 +1,80 @@
+// The device token is a bearer secret. It lives in sessionStorage (per tab, survives a
+// reload) and is never put in a URL or a log.
+import type { RoomSession } from "@/types/room";
+
+const PREFIX = "droply:session:";
+
+export interface StoredSession {
+  roomId: string;
+  roomCode: string;
+  joinUrl: string;
+  deviceId: string;
+  token: string;
+  tokenExpiresAt: string;
+}
+
+export function toStoredSession(session: RoomSession): StoredSession {
+  return {
+    roomId: session.room_id,
+    roomCode: session.room_code,
+    joinUrl: session.join_url,
+    deviceId: session.device.device_id,
+    token: session.device_token,
+    tokenExpiresAt: session.token_expires_at,
+  };
+}
+
+function isStoredSession(value: unknown): value is StoredSession {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return ["roomId", "roomCode", "joinUrl", "deviceId", "token", "tokenExpiresAt"].every(
+    (key) => typeof v[key] === "string",
+  );
+}
+
+export function saveSession(session: StoredSession): void {
+  try {
+    sessionStorage.setItem(PREFIX + session.roomId, JSON.stringify(session));
+  } catch {
+    // Storage blocked: the session works until the tab reloads.
+  }
+}
+
+export function loadSession(roomId: string): StoredSession | null {
+  try {
+    const raw = sessionStorage.getItem(PREFIX + roomId);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (!isStoredSession(parsed)) return null;
+    if (Date.parse(parsed.tokenExpiresAt) <= Date.now()) {
+      clearSession(roomId);
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/** Finds a session for a room by its code, used when re-opening a join link. */
+export function findSessionByCode(roomCode: string): StoredSession | null {
+  try {
+    for (let i = 0; i < sessionStorage.length; i += 1) {
+      const key = sessionStorage.key(i);
+      if (!key?.startsWith(PREFIX)) continue;
+      const session = loadSession(key.slice(PREFIX.length));
+      if (session && session.roomCode === roomCode) return session;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+export function clearSession(roomId: string): void {
+  try {
+    sessionStorage.removeItem(PREFIX + roomId);
+  } catch {
+    // ignore
+  }
+}
