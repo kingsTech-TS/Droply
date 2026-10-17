@@ -14,6 +14,7 @@ import { userMessage } from "@/lib/api/errors";
 import { createRoom } from "@/lib/api/rooms";
 import { takeSharedPayload } from "@/lib/pwa/shared-inbox";
 import { setPendingFiles, setPendingText } from "@/lib/session/pending-files";
+import { rememberRoom } from "@/lib/session/my-rooms";
 import { saveSession, toStoredSession } from "@/lib/session/session-store";
 import type { RoomKind } from "@/types/room";
 import { createTheme, ThemePicker } from "./theme-picker";
@@ -51,6 +52,7 @@ export function StartSharing() {
         options.speedTest ? "default" : theme,
       );
       saveSession(toStoredSession(session));
+      rememberRoom(session);
       setPendingFiles(files);
       setPendingText(options.text ?? null);
       router.push(`/room/${encodeURIComponent(session.room_id)}${options.speedTest ? "?test=1" : ""}`);

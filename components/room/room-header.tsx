@@ -58,9 +58,9 @@ export function RoomHeader({ code, isHost, transfersActive, onLeave, onCloseRoom
             <AlertDialogDescription>
               {confirm === "close"
                 ? "Every device is disconnected and unfinished transfers stop."
-                : transfersActive
-                  ? "Transfers to and from this device will stop."
-                  : "You can join again with the room code while the room is open."}
+                : `${transfersActive ? "Transfers to and from this device will stop. " : ""}The room stays open: find it under Your active rooms on the home page to come back${
+                    isHost ? " as host" : ""
+                  }.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

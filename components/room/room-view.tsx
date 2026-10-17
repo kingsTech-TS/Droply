@@ -157,6 +157,14 @@ export function RoomView() {
     setSelection((current) => [...current, ...metas]);
   }, []);
 
+  // Phones close background tabs to free memory; the room reconnects on reload, but files
+  // that were selected are gone. Say so instead of leaving people wondering.
+  useEffect(() => {
+    if ((document as Document & { wasDiscarded?: boolean }).wasDiscarded) {
+      toast.info("Your phone closed this page to free up memory. You're back in the room; select your files again.", { duration: 10_000 });
+    }
+  }, []);
+
   // Files and text picked before the room existed (landing page or another app's share sheet).
   // They live in a module-level hand-off store that is read once, so this is a one-time sync.
   useEffect(() => {

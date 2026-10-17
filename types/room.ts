@@ -4,7 +4,8 @@ import type { TransferConfigView } from "./transfer";
 
 export type RoomStatus = "open" | "closed" | "expired";
 /** `event` rooms hold more devices (parties, classes). */
-export type RoomKind = "standard" | "event";
+export const ROOM_KINDS = ["standard", "event"] as const;
+export type RoomKind = (typeof ROOM_KINDS)[number];
 export const ROOM_THEMES = ["default", "party", "birthday", "wedding", "gaming", "study", "ocean", "sunset"] as const;
 export type RoomTheme = (typeof ROOM_THEMES)[number];
 
@@ -52,6 +53,22 @@ export interface NearbyRoom {
 export interface RoomJoinRequest {
   room_code: string;
   device: DeviceInfoIn;
+  host_key?: string;
+}
+
+export interface RoomRef {
+  room_id: string;
+  room_code: string;
+}
+
+/** Whether a room is still open (details only when it is). */
+export interface RoomStatusView {
+  room_id: string;
+  active: boolean;
+  expires_at: string | null;
+  device_count: number | null;
+  kind: RoomKind | null;
+  theme: RoomTheme | null;
 }
 
 export interface RoomView {
@@ -82,6 +99,8 @@ export interface RoomSession {
   room: RoomView;
   ice_servers: IceServer[];
   transfer_config: TransferConfigView;
+  /** Only when creating a room: proves "I created it" when rejoining (host again). Private. */
+  host_key?: string | null;
 }
 
 export interface RendezvousSession extends RoomSession {

@@ -31,6 +31,8 @@ import type { DeviceView } from "@/types/device";
 import type { RoomKind, RoomTheme, RoomView } from "@/types/room";
 import type { DeviceUpdate, RoomStateEvent, TransferEventType } from "@/types/signaling";
 import type { TransferConfigView } from "@/types/transfer";
+import { memoryBudget } from "@/lib/device/memory";
+import { forgetRooms, updateRememberedTheme } from "./my-rooms";
 import { clearSession, type SessionMode, type StoredSession } from "./session-store";
 
 export type RoomStatus = "connecting" | "live" | "reconnecting" | "ended";
@@ -199,6 +201,7 @@ export class RoomSession {
       resume: createResumeStore(),
       sinks: browserSinkFactory,
       mobile: this.mobile,
+      memory: memoryBudget(),
       deviceName: (id) => this.deviceName(id),
       // Only devices holding the pairing key can enter a "My devices" room.
       trustAll: session.mode === "my-devices",
@@ -235,6 +238,7 @@ export class RoomSession {
       window.addEventListener("online", this.onOnline);
       window.addEventListener("offline", this.onOffline);
       document.addEventListener("visibilitychange", this.onVisibility);
+      document.addEventListener("resume", this.onResume);
     }
     s.connect();
     this.refreshTimer = setInterval(() => void this.refreshRoom(), 60_000);
@@ -383,6 +387,7 @@ export class RoomSession {
       window.removeEventListener("online", this.onOnline);
       window.removeEventListener("offline", this.onOffline);
       document.removeEventListener("visibilitychange", this.onVisibility);
+      document.removeEventListener("resume", this.onResume);
     }
     if (this.refreshTimer) clearInterval(this.refreshTimer);
     if (this.statsTimer) clearTimeout(this.statsTimer);
@@ -430,6 +435,7 @@ export class RoomSession {
   }
 
   private applyRoomView(room: RoomView): void {
+    if (this.session.mode === "standard") updateRememberedTheme(room.room_id, room.theme);
     this.patch({
       roomCode: room.room_code,
       joinUrl: room.join_url,
@@ -593,6 +599,11 @@ export class RoomSession {
     if (this.room.getSnapshot().status === "ended") return;
     this.patch({ status: "ended", endReason: reason });
     clearSession(this.session.roomId);
+    // Gone for good (closed, expired, removed by the host): drop it from "your active rooms".
+    // Leaving on purpose keeps it there so the room can be rejoined.
+    if (reason === "room_ended" || reason === "expired" || reason === "removed" || reason === "room_not_found") {
+      forgetRooms([this.session.roomId]);
+    }
     this.transfers.dispose();
     this.peers.dispose();
     if (this.refreshTimer) clearInterval(this.refreshTimer);
@@ -635,12 +646,30 @@ export class RoomSession {
     this.notices.emit("notice", { kind: "warning", message: "You're offline. Transfers will continue when you're back." });
   };
 
+  private hiddenAt: number | null = null;
+
   private readonly onVisibility = (): void => {
-    if (document.visibilityState !== "visible") return;
+    if (document.visibilityState !== "visible") {
+      this.hiddenAt ??= Date.now();
+      return;
+    }
+    const away = this.hiddenAt === null ? 0 : Date.now() - this.hiddenAt;
+    this.hiddenAt = null;
     void this.refreshRoom();
     if (this.signaling.status === "ended" && this.room.getSnapshot().endReason === "gave_up") {
       this.signaling.retryNow();
+      return;
     }
+    // Phones freeze the page while the file picker or camera is open. Check the connection
+    // right away instead of waiting for heartbeats to time out.
+    if (away > 3000) this.onResume();
+  };
+
+  /** Page Lifecycle "resume" (unfrozen) and coming back to a hidden tab. */
+  private readonly onResume = (): void => {
+    if (this.disposed || this.room.getSnapshot().status === "ended") return;
+    this.signaling.checkAlive();
+    this.peers.recoverInUse();
   };
 
   private patch(partial: Partial<RoomSnapshot>): void {

@@ -240,3 +240,82 @@ describe("room themes", () => {
     for (const style of Object.values(THEME_STYLES)) expect(style.confetti.length).toBeGreaterThan(2);
   });
 });
+
+describe("memory budgets (phones)", () => {
+  it("classifies devices", async () => {
+    const { memoryClassFrom, MEMORY_BUDGETS } = await import("@/lib/device/memory");
+    expect(memoryClassFrom(8, false)).toBe("normal");
+    expect(memoryClassFrom(undefined, false)).toBe("normal");
+    expect(memoryClassFrom(undefined, true)).toBe("constrained");
+    expect(memoryClassFrom(4, false)).toBe("constrained");
+    expect(memoryClassFrom(2, true)).toBe("low");
+    expect(MEMORY_BUDGETS.low.maxChunkSize).toBeLessThan(MEMORY_BUDGETS.normal.maxChunkSize);
+    expect(MEMORY_BUDGETS.constrained.videoThumbnails).toBe(false);
+  });
+
+  it("caps the send buffer and concurrency", async () => {
+    const { AdaptiveController, defaultTuning } = await import("@/lib/webrtc/adaptive-controller");
+    const { schedulerLimits } = await import("@/lib/webrtc/scheduler");
+    const tuning = defaultTuning(null, true, 2 * 1024 * 1024);
+    expect(tuning.maxHighWater).toBe(2 * 1024 * 1024);
+    const controller = new AdaptiveController(tuning);
+    controller.setRtt(200);
+    let queued = 0;
+    for (let t = 0; t <= 20_000; t += 500) {
+      queued += 50_000_000; // a very fast link keeps asking for more buffer
+      controller.sample({ bytesQueued: queued, bufferedAmount: 0, senderBlocked: true, now: t });
+    }
+    expect(controller.currentHighWater).toBeLessThanOrEqual(2 * 1024 * 1024);
+    expect(schedulerLimits(true, 1)).toEqual({ global: 1, perPeer: 1 });
+    expect(schedulerLimits(false)).toEqual({ global: 4, perPeer: 2 });
+    expect(schedulerLimits(false, 2)).toEqual({ global: 2, perPeer: 2 });
+  });
+});
+
+describe("image size from the header", () => {
+  it("reads PNG, GIF, WebP and JPEG (past EXIF) without decoding", async () => {
+    const { imageSizeFromBytes } = await import("@/lib/media/image-size");
+    const png = new Uint8Array(32);
+    png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+    png.set([0, 0, 0x0f, 0xa0, 0, 0, 0x0b, 0xb8], 16); // 4000 × 3000
+    expect(imageSizeFromBytes(png)).toEqual({ width: 4000, height: 3000 });
+
+    const gif = new Uint8Array(32);
+    gif.set([...Array.from("GIF89a", (c) => c.charCodeAt(0)), 0x40, 0x01, 0xf0, 0x00]); // 320 × 240
+    expect(imageSizeFromBytes(gif)).toEqual({ width: 320, height: 240 });
+
+    const webp = new Uint8Array(40);
+    webp.set(Array.from("RIFF", (c) => c.charCodeAt(0)));
+    webp.set(Array.from("WEBPVP8X", (c) => c.charCodeAt(0)), 8);
+    webp.set([0x7f, 0x07, 0x00, 0x37, 0x04, 0x00], 24); // 1920 × 1080 (stored minus one)
+    expect(imageSizeFromBytes(webp)).toEqual({ width: 1920, height: 1080 });
+
+    // SOI, an APP1 (EXIF) segment of 2000 bytes, then SOF0 with 6000 × 8000.
+    const jpeg = new Uint8Array(2100);
+    jpeg.set([0xff, 0xd8, 0xff, 0xe1, 0x07, 0xd0]);
+    jpeg.set([0xff, 0xc0, 0x00, 0x11, 0x08, 0x1f, 0x40, 0x17, 0x70], 4 + 2000);
+    expect(imageSizeFromBytes(jpeg)).toEqual({ width: 6000, height: 8000 });
+
+    expect(imageSizeFromBytes(new Uint8Array(32))).toBeNull();
+  });
+});
+
+describe("your active rooms", () => {
+  it("remembers rooms, keeps the creator's host key, and forgets ended ones", async () => {
+    const { forgetRooms, myRooms, rememberRoom, updateRememberedTheme } = await import("@/lib/session/my-rooms");
+    myRooms.set([]);
+    const session = (id: string, hostKey: string | null) =>
+      ({ room_id: id, room_code: "K7X9PQ", host_key: hostKey, room: { theme: "party", kind: "standard" } }) as unknown as import("@/types/room").RoomSession;
+    rememberRoom(session("rm_a", "k".repeat(43)));
+    rememberRoom(session("rm_b", null));
+    // Rejoining (no key in the response) keeps the key from creating the room.
+    rememberRoom(session("rm_a", null));
+    const [first, second] = myRooms.get();
+    expect(first).toMatchObject({ roomId: "rm_a", created: true, hostKey: "k".repeat(43), theme: "party" });
+    expect(second).toMatchObject({ roomId: "rm_b", created: false, hostKey: null });
+    updateRememberedTheme("rm_b", "ocean");
+    expect(myRooms.get()[1]!.theme).toBe("ocean");
+    forgetRooms(["rm_a"]);
+    expect(myRooms.get().map((r) => r.roomId)).toEqual(["rm_b"]);
+  });
+});

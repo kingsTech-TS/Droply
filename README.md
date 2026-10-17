@@ -48,6 +48,9 @@ Requirements: [prompt.md](prompt.md) · Design and decisions: [implementation.md
 - A live device list shows presence (Online, Reconnecting, Offline) as text, not just color.
 - The host can remove any device (with a confirmation) or close the room for everyone. Any
   device can leave.
+- **Your active rooms:** leaving a room (rather than the host closing it, or being removed)
+  keeps it on the home page while it's open, with *Rejoin*. The creator keeps a private host
+  key from creating the room and comes back as host.
 
 **Sending and receiving**
 
@@ -463,6 +466,10 @@ See [implementation.md §10](implementation.md#10-implementation-status) for det
 
 - **Throughput on real devices hasn't been measured yet.** Use `/dev/benchmark` on your
   hardware to tune the defaults.
+- **Low-memory phones:** chunk size, send buffer and parallel files shrink with the device's
+  memory (`lib/device/memory.ts`); previews are small thumbnails decoded one at a time, and
+  phones get no video thumbnails. After the file picker or camera, the connection is checked
+  at once instead of waiting for heartbeats.
 - **Phones** need the HTTPS setup above. Mobile browsers pause background tabs, so keep the
   tab open; transfers resume if it's interrupted.
 - **Reloading the sender's page** requires selecting the same file again to resume. A

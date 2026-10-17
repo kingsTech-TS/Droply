@@ -2,8 +2,11 @@ import type { DeviceInfoIn } from "@/types/device";
 import type {
   NearbyRoom,
   RendezvousSession,
+  RoomJoinRequest,
   RoomKind,
+  RoomRef,
   RoomSession,
+  RoomStatusView,
   RoomSettingsUpdate,
   RoomTheme,
   RoomView,
@@ -29,15 +32,20 @@ export function createRoom(
     });
 }
 
-/** Joins by code. Sending a still-valid token for the same room returns the same device. */
+/**
+ * Joins by code. Sending a still-valid token for the same room returns the same device;
+ * the creator's `hostKey` makes this device host again.
+ */
 export function joinRoom(
   roomCode: string,
   device: DeviceInfoIn,
   token: string | null = null,
   client: ApiClient = apiClient,
+  hostKey: string | null = null,
 ): Promise<RoomSession> {
+  const body: RoomJoinRequest = hostKey ? { room_code: roomCode, device, host_key: hostKey } : { room_code: roomCode, device };
   return client.request<RoomSession>("POST", "/rooms/join", {
-    body: { room_code: roomCode, device },
+    body,
     token,
   });
 }
@@ -65,6 +73,11 @@ export function updateRoomSettings(
     body: settings,
     token,
   });
+}
+
+/** Which of these rooms are still open (needs each room's id and code). */
+export function getRoomStatus(rooms: readonly RoomRef[], client: ApiClient = apiClient): Promise<RoomStatusView[]> {
+  return client.request<RoomStatusView[]>("POST", "/rooms/status", { body: { rooms } });
 }
 
 /** Discoverable rooms created from this device's network (same public IP). */

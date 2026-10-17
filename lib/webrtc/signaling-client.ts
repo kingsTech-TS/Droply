@@ -173,6 +173,21 @@ export class SignalingClient {
     this.open();
   }
 
+  /**
+   * Quick health check after the page was in the background (a phone's file picker or
+   * camera, a locked screen). Frozen pages can come back with a socket that looks open but
+   * is dead: ping, and reconnect at once if nothing answers within `timeoutMs`.
+   */
+  checkAlive(timeoutMs = 4000): void {
+    if (this.ended) return;
+    if (!this.socket) {
+      this.retryNow();
+      return;
+    }
+    if (!this.authenticated || this.socket.readyState !== OPEN) return;
+    if (this.sendNow({ type: "ping", ts: Date.now() })) this.armSilenceTimer(timeoutMs);
+  }
+
   // --- internals -------------------------------------------------------------
 
   private open(): void {
@@ -342,7 +357,7 @@ export class SignalingClient {
     }
   }
 
-  private armSilenceTimer(): void {
+  private armSilenceTimer(timeoutMs = this.options.silenceTimeoutMs ?? 75_000): void {
     this.clearSilenceTimer();
     this.silenceTimer = setTimeout(() => {
       logger.warn("signaling", "no traffic from server; reconnecting");
@@ -352,7 +367,7 @@ export class SignalingClient {
         socket.onclose = null;
         socket.close(4000);
       }
-    }, this.options.silenceTimeoutMs ?? 75_000);
+    }, timeoutMs);
   }
 
   private clearSilenceTimer(): void {

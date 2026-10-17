@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { useDevice } from "@/hooks/use-device";
 import { userMessage } from "@/lib/api/errors";
 import { createRoom } from "@/lib/api/rooms";
+import { rememberRoom } from "@/lib/session/my-rooms";
 import { saveSession, toStoredSession } from "@/lib/session/session-store";
 
 /** Opens a room in speed-test mode: the test starts when another device joins. */
@@ -25,6 +26,7 @@ export function SpeedTestStart() {
         operating_system: device?.os ?? null,
       });
       saveSession(toStoredSession(session));
+      rememberRoom(session);
       router.push(`/room/${encodeURIComponent(session.room_id)}?test=1`);
     } catch (error) {
       toast.error(userMessage(error));

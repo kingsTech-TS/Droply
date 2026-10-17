@@ -10,6 +10,8 @@ export interface TransferTuning {
   frameSize: number;
   /** Unacknowledged chunks allowed per leg (receive-side backpressure). */
   window: number;
+  /** Ceiling for the send buffer (lower on phones, which close tabs that use too much). */
+  maxHighWater?: number;
 }
 
 export interface Sample {
@@ -26,16 +28,17 @@ const SAFE_FRAME = 16 * 1024;
 const DEFAULT_FRAME = 64 * 1024;
 const MAX_FRAME = 256 * 1024;
 
-export function defaultTuning(maxMessageSize: number | null, mobile: boolean): TransferTuning {
+export function defaultTuning(maxMessageSize: number | null, mobile: boolean, maxHighWater = MAX_HIGH_WATER): TransferTuning {
   // Unknown max message size (older Safari): stay with the interop-safe 16 KiB.
   const frameSize =
     maxMessageSize && maxMessageSize > 0
       ? Math.min(DEFAULT_FRAME, maxMessageSize, MAX_FRAME)
       : SAFE_FRAME;
   return {
-    initialHighWater: 1024 * 1024,
+    initialHighWater: Math.min(1024 * 1024, maxHighWater),
     frameSize: Math.max(1024, frameSize),
     window: mobile ? 3 : 6,
+    maxHighWater: Math.max(MIN_HIGH_WATER, Math.min(MAX_HIGH_WATER, maxHighWater)),
   };
 }
 
@@ -112,7 +115,7 @@ export class AdaptiveController {
       const target = Math.max(MIN_HIGH_WATER, 2 * bdp);
       const limit = this.highWater * GROWTH_PER_SECOND ** Math.min(1, dtSeconds);
       if (target > this.highWater) {
-        this.highWater = Math.min(MAX_HIGH_WATER, target, limit);
+        this.highWater = Math.min(this.tuning.maxHighWater ?? MAX_HIGH_WATER, target, limit);
       }
     }
     this.previousThroughput = this.throughputEwma;

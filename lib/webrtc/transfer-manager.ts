@@ -9,6 +9,7 @@
 // File objects, buffers and channels live here, never in React state. The UI reads
 // `store`, an immutable snapshot published at most every 200 ms for progress changes
 // (immediately for status changes).
+import type { MemoryBudget } from "@/lib/device/memory";
 import { env } from "@/config/env";
 import { isApiError, userMessage } from "@/lib/api/errors";
 import type { TransferAction } from "@/lib/api/transfers";
@@ -160,6 +161,8 @@ export interface TransferManagerOptions {
   resume: ResumeStore;
   sinks: SinkFactory;
   mobile: boolean;
+  /** Memory limits for this device (smaller buffers and chunks on phones). */
+  memory?: MemoryBudget;
   deviceName: (deviceId: string) => string;
   maxActiveTransfers?: number;
   /** Auto-accept from everyone (a "My devices" room: only paired devices can be in it). */
@@ -283,7 +286,7 @@ export class TransferManager {
 
   constructor(private readonly options: TransferManagerOptions) {
     this.config = options.config;
-    this.tuning = defaultTuning(null, options.mobile);
+    this.tuning = defaultTuning(null, options.mobile, options.memory?.maxHighWater);
     const { peers } = options;
     this.subs.push(
       peers.events.on("transport", ({ peerId, transport }) => this.onTransport(peerId, transport)),
@@ -346,7 +349,7 @@ export class TransferManager {
         const chunkSize = chooseChunkSize(this.slowestThroughput(group), {
           recommended: this.config.recommended_chunk_size,
           min: this.config.min_chunk_size,
-          max: this.config.max_chunk_size,
+          max: Math.max(this.config.min_chunk_size, Math.min(this.config.max_chunk_size, this.options.memory?.maxChunkSize ?? Infinity)),
         });
         const record: OutgoingRecord = {
           kind: "outgoing",
@@ -1010,7 +1013,7 @@ export class TransferManager {
   /** Starts senders for legs that are ready, within the concurrency limits. */
   private pumpStarts(): void {
     if (this.disposed) return;
-    const limits = schedulerLimits(this.options.mobile);
+    const limits = schedulerLimits(this.options.mobile, this.options.memory?.maxActiveTransfers);
     const running: { peerId: string }[] = [];
     const waiting: Candidate[] = [];
     const lookup = new Map<string, [OutgoingRecord, OutLeg]>();

@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { LockIcon, MonitorSmartphoneIcon, QrCodeIcon, RocketIcon, SendIcon, SmartphoneIcon, ZapIcon } from "lucide-react";
 import { Footer } from "@/components/layout/footer";
 import { Header } from "@/components/layout/header";
+import { ActiveRooms } from "@/components/landing/active-rooms";
 import { JoinCodeForm } from "@/components/landing/join-code-form";
 import { MyDevices } from "@/components/landing/my-devices";
 import { NearbyRooms } from "@/components/landing/nearby-rooms";
@@ -48,6 +49,7 @@ export default function Home() {
             <p className="text-lg text-muted-foreground text-balance">Transfer files directly between your devices.</p>
           </div>
           <div className="mb-6 space-y-4">
+            <ActiveRooms />
             <NearbyRooms />
             <MyDevices />
           </div>

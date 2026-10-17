@@ -90,6 +90,13 @@ export class PeerManager {
     return this.peers.get(peerId)?.stats?.rttMs ?? null;
   }
 
+  /** After the page was frozen in the background: retry links in use that failed meanwhile. */
+  recoverInUse(): void {
+    for (const [peerId, link] of this.peers) {
+      if ((this.holds.get(peerId) ?? 0) > 0 && link.info.getSnapshot().status === "failed") void link.retry();
+    }
+  }
+
   /** Retries a link that gave up (e.g. the user pressed Retry). */
   retry(peerId: string, relayOnly = false): void {
     const link = this.link(peerId);

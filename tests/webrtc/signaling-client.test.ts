@@ -53,6 +53,25 @@ describe("SignalingClient", () => {
     expect(client.status).toBe("open");
   });
 
+  it("after a freeze, reconnects at once if the socket no longer answers", () => {
+    const { client } = makeClient();
+    client.connect();
+    const socket = openAndJoin();
+    client.checkAlive(4000);
+    expect(socket.sent.at(-1)).toMatchObject({ type: "ping" });
+    // A live socket answers and nothing happens.
+    vi.advanceTimersByTime(1000);
+    socket.serverSend({ type: "pong", ts: 1 });
+    vi.advanceTimersByTime(10_000);
+    expect(FakeSocket.instances).toHaveLength(1);
+    // A dead one (looks open, never answers) is replaced right away, not after 75 s.
+    client.checkAlive(4000);
+    vi.advanceTimersByTime(4001);
+    expect(client.state.getSnapshot().status).toBe("reconnecting");
+    vi.advanceTimersByTime(700);
+    expect(FakeSocket.instances).toHaveLength(2);
+  });
+
   it("answers server pings with pong", () => {
     const { client } = makeClient();
     client.connect();

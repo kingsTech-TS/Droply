@@ -7,8 +7,10 @@ export interface SchedulerLimits {
   perPeer: number;
 }
 
-export function schedulerLimits(mobile: boolean): SchedulerLimits {
-  return mobile ? { global: 2, perPeer: 1 } : { global: 4, perPeer: 2 };
+export function schedulerLimits(mobile: boolean, maxActive = Number.POSITIVE_INFINITY): SchedulerLimits {
+  const limits = mobile ? { global: 2, perPeer: 1 } : { global: 4, perPeer: 2 };
+  const global = Math.max(1, Math.min(limits.global, maxActive));
+  return { global, perPeer: Math.min(limits.perPeer, global) };
 }
 
 export interface Candidate {

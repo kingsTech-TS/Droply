@@ -12,6 +12,7 @@ import { useDevice } from "@/hooks/use-device";
 import { isApiError, userMessage } from "@/lib/api/errors";
 import { joinRoom } from "@/lib/api/rooms";
 import { MAX_DEVICE_NAME } from "@/lib/device/device-name";
+import { myRooms, rememberRoom } from "@/lib/session/my-rooms";
 import { findSessionByCode, saveSession, toStoredSession } from "@/lib/session/session-store";
 import { formatRoomCode } from "@/lib/utils/format";
 import { isValidRoomCode, normalizeRoomCode } from "@/lib/utils/room-code";
@@ -44,8 +45,11 @@ export function JoinForm({ initialCode }: { initialCode: string }) {
           operating_system: device?.os ?? null,
         },
         existing?.token ?? null,
+        undefined,
+        myRooms.get().find((r) => r.roomCode === normalizeRoomCode(code))?.hostKey ?? null,
       );
       saveSession(toStoredSession(session));
+      rememberRoom(session);
       router.push(`/room/${encodeURIComponent(session.room_id)}`);
     } catch (err) {
       const fatal = isApiError(err) && (err.code === "ROOM_EXPIRED" || err.code === "INVALID_ROOM_CODE" || err.code === "ROOM_NOT_FOUND");

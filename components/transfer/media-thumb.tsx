@@ -1,18 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { PlayIcon } from "lucide-react";
+import { ImageIcon, PlayIcon } from "lucide-react";
+import { memoryBudget } from "@/lib/device/memory";
 import { asMedia, sniffMedia, type MediaKind } from "@/lib/media/sniff";
+import { scaledImage, thumbnailUrl } from "@/lib/media/thumbnail";
 import { cn } from "@/lib/utils/cn";
 
-export interface PreviewState {
-  url: string;
-  media: MediaKind;
-}
+export type PreviewState =
+  | { kind: "ready"; url: string; media: MediaKind }
+  /** A real image, but too large to decode safely on this device. */
+  | { kind: "too-large"; media: MediaKind };
 
 /**
- * Creates an object URL only for real images/videos (detected from the bytes). SVG, HTML
- * and other formats never get a preview. The URL is revoked when the component unmounts.
+ * A full-screen preview, only for real images/videos (detected from the bytes; SVG, HTML
+ * and other formats never render). On phones, photos are shown scaled to the screen
+ * instead of decoding the original. The URL is revoked when the component unmounts.
  */
 export function useMediaPreview(file: Blob | null | undefined): PreviewState | null {
   const [state, setState] = useState<PreviewState | null>(null);
@@ -20,11 +23,23 @@ export function useMediaPreview(file: Blob | null | undefined): PreviewState | n
     if (!file) return;
     let cancelled = false;
     let url: string | null = null;
-    void sniffMedia(file).then((media) => {
+    void (async () => {
+      const media = await sniffMedia(file);
       if (cancelled || !media) return;
-      url = URL.createObjectURL(asMedia(file, media));
-      setState({ url, media });
-    });
+      const maxDimension = memoryBudget().viewerMaxDimension;
+      if (media.kind === "image" && maxDimension > 0) {
+        const scaled = await scaledImage(file, maxDimension, 0.9);
+        if (cancelled) return;
+        if (!scaled) {
+          setState({ kind: "too-large", media });
+          return;
+        }
+        url = URL.createObjectURL(scaled);
+      } else {
+        url = URL.createObjectURL(asMedia(file, media));
+      }
+      setState({ kind: "ready", url, media });
+    })();
     return () => {
       cancelled = true;
       if (url) URL.revokeObjectURL(url);
@@ -34,18 +49,57 @@ export function useMediaPreview(file: Blob | null | undefined): PreviewState | n
   return state;
 }
 
+type ThumbState = { kind: "image"; url: string } | { kind: "video"; url: string | null } | { kind: "icon"; media: MediaKind };
+
+/**
+ * A small thumbnail. Photos are decoded once at thumbnail size (one at a time); videos
+ * only get a <video> element where memory allows (each one holds a decoder on phones).
+ */
+function useThumbnail(file: Blob): ThumbState | null {
+  const [state, setState] = useState<ThumbState | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    let videoUrl: string | null = null;
+    void (async () => {
+      const media = await sniffMedia(file);
+      if (cancelled || !media) return;
+      if (media.kind === "video") {
+        if (memoryBudget().videoThumbnails) {
+          videoUrl = URL.createObjectURL(asMedia(file, media));
+          setState({ kind: "video", url: videoUrl });
+        } else {
+          setState({ kind: "video", url: null });
+        }
+        return;
+      }
+      const url = await thumbnailUrl(file);
+      if (!cancelled) setState(url ? { kind: "image", url } : { kind: "icon", media });
+    })();
+    return () => {
+      cancelled = true;
+      if (videoUrl) URL.revokeObjectURL(videoUrl);
+      setState(null);
+    };
+  }, [file]);
+  return state;
+}
+
 export function MediaThumb({ file, name, className, onOpen }: { file: Blob; name: string; className?: string; onOpen?: () => void }) {
-  const preview = useMediaPreview(file);
-  if (!preview) return null;
+  const thumb = useThumbnail(file);
+  if (!thumb) return null;
   const content =
-    preview.media.kind === "image" ? (
+    thumb.kind === "image" ? (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src={preview.url} alt="" className="size-full object-cover" loading="lazy" decoding="async" />
-    ) : (
+      <img src={thumb.url} alt="" className="size-full object-cover" decoding="async" />
+    ) : thumb.kind === "video" && thumb.url ? (
       <>
-        <video src={preview.url} muted playsInline preload="metadata" className="size-full object-cover" />
+        <video src={thumb.url} muted playsInline preload="metadata" className="size-full object-cover" />
         <PlayIcon aria-hidden className="absolute inset-0 m-auto size-6 text-white drop-shadow" />
       </>
+    ) : (
+      <span className="flex size-full items-center justify-center text-muted-foreground">
+        {thumb.kind === "video" ? <PlayIcon aria-hidden className="size-5" /> : <ImageIcon aria-hidden className="size-5" />}
+      </span>
     );
   return onOpen ? (
     <button
