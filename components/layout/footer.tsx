@@ -12,6 +12,9 @@ export function Footer() {
           <Link href="/#how-it-works" className="hover:text-foreground">
             How it works
           </Link>
+          <Link href="/history" className="hover:text-foreground">
+            History
+          </Link>
           <Link href="/speed-test" className="hover:text-foreground">
             Speed test
           </Link>

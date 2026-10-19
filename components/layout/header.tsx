@@ -20,13 +20,13 @@ export function Header({ children }: { children?: ReactNode }) {
               </Link>
               <Link
                 href="/history"
-                className="hidden min-h-11 items-center rounded-lg px-3 text-sm text-muted-foreground hover:text-foreground sm:inline-flex"
+                className="inline-flex min-h-11 items-center rounded-lg px-2 text-sm text-muted-foreground hover:text-foreground sm:px-3"
               >
                 History
               </Link>
               <Link
                 href="/about"
-                className="inline-flex min-h-11 items-center rounded-lg px-3 text-sm text-muted-foreground hover:text-foreground"
+                className="inline-flex min-h-11 items-center rounded-lg px-2 text-sm text-muted-foreground hover:text-foreground sm:px-3"
               >
                 About
               </Link>

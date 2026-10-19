@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { RadarIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
@@ -15,10 +15,12 @@ export interface RoomSettingsProps {
   discoverable: boolean;
   onTheme: (theme: RoomTheme) => Promise<void>;
   onDiscoverable: (value: boolean) => Promise<void>;
+  /** Room time (timed rooms). */
+  time?: ReactNode;
 }
 
 /** Host-only: room theme for everyone, and opt-in discovery by nearby devices. */
-export function RoomSettings({ theme, discoverable, onTheme, onDiscoverable }: RoomSettingsProps) {
+export function RoomSettings({ theme, discoverable, onTheme, onDiscoverable, time }: RoomSettingsProps) {
   const [busy, setBusy] = useState(false);
   const run = async (task: () => Promise<void>) => {
     setBusy(true);
@@ -32,6 +34,7 @@ export function RoomSettings({ theme, discoverable, onTheme, onDiscoverable }: R
   };
   return (
     <div className="space-y-4">
+      {time}
       <fieldset className="space-y-2">
         <legend className="text-sm font-medium">Room theme</legend>
         <div className="flex flex-wrap gap-1.5">

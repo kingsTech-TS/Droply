@@ -17,6 +17,7 @@ import { setPendingFiles, setPendingText } from "@/lib/session/pending-files";
 import { rememberRoom } from "@/lib/session/my-rooms";
 import { saveSession, toStoredSession } from "@/lib/session/session-store";
 import type { RoomKind } from "@/types/room";
+import { createDuration, DurationPicker } from "./duration-picker";
 import { createTheme, ThemePicker } from "./theme-picker";
 
 interface StartOptions {
@@ -33,6 +34,7 @@ export function StartSharing() {
   const [busy, setBusy] = useState(false);
   const handledShare = useRef(false);
   const theme = useLocalStore(createTheme);
+  const minutes = useLocalStore(createDuration);
   // Preview the chosen theme on this page; the room keeps it.
   useRoomTheme(theme);
 
@@ -50,6 +52,7 @@ export function StartSharing() {
         undefined,
         options.kind ?? "standard",
         options.speedTest ? "default" : theme,
+        minutes,
       );
       saveSession(toStoredSession(session));
       rememberRoom(session);
@@ -77,6 +80,7 @@ export function StartSharing() {
     <div className="space-y-3">
       <DropZone onFiles={(files) => void start(files)} disabled={busy} title={busy ? "Creating your room…" : "Drop files here"} />
       <ThemePicker value={theme} onChange={(t) => createTheme.set(t)} disabled={busy} />
+      <DurationPicker value={minutes} onChange={(m) => createDuration.set(m)} disabled={busy} />
       <div className="flex flex-col items-center gap-y-1 sm:flex-row sm:flex-wrap sm:justify-center sm:gap-x-2">
         <Button variant="link" onClick={() => void start([])} disabled={busy}>
           Create an empty room to receive
