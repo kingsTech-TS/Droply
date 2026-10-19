@@ -674,7 +674,13 @@ export class TransferManager {
       return;
     }
     const inc = this.incoming.get(localId);
-    if (inc?.status === "failed") await this.actIncoming(inc, "retry");
+    if (inc?.status !== "failed") return;
+    if (inc.failureReason === "read_error") {
+      // The sender lost access to the file: only they can fix it, by sending it again.
+      this.notify({ kind: "info", message: `Ask ${this.options.deviceName(inc.senderId)} to send ${inc.fileName} again.` });
+      return;
+    }
+    await this.actIncoming(inc, "retry");
   }
 
   async cancel(localId: string): Promise<void> {
@@ -1134,6 +1140,7 @@ export class TransferManager {
         if (result.reason === "read_error") {
           record.source = null;
           record.error = "The file could not be read. It may have been moved or changed.";
+          this.notify({ kind: "error", message: `${record.fileName} couldn't be read on this device. Select it again to send it.` });
         }
         await this.act(record, leg, "fail", reason);
         break;

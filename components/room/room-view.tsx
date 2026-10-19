@@ -44,9 +44,11 @@ import { userMessage } from "@/lib/api/errors";
 import { preferences } from "@/lib/fun/prefs";
 import { THEME_STYLES } from "@/lib/fun/themes";
 import { useRoomTheme } from "@/hooks/use-room-theme";
+import { memoryClass } from "@/lib/device/memory";
 import { compressPhotos } from "@/lib/media/compress";
 import { pairing } from "@/lib/pairing/pairing";
 import { takePendingFiles, takePendingText } from "@/lib/session/pending-files";
+import { PIN_LIMITS, pinFiles } from "@/lib/storage/pin-files";
 import { saveFile } from "@/lib/storage/save";
 import { cn } from "@/lib/utils/cn";
 import { randomId } from "@/lib/utils/id";
@@ -153,17 +155,34 @@ export function RoomView() {
   useEffect(() => session.notices.on("notice", showNotice), [session]);
   useEffect(() => session.setChatOpen(chatOpen), [session, chatOpen]);
 
-  const addFiles = useCallback((files: File[]) => {
-    if (files.length === 0) return;
-    const metas = files.map((file) => {
-      const id = randomId("sel_");
-      filesRef.current.set(id, file);
-      const relative = (file as File & { webkitRelativePath?: string }).webkitRelativePath ?? "";
-      const folder = relative.split("/").slice(0, -1).join("/") || null;
-      return { id, name: file.name, size: file.size, type: file.type, folder };
-    });
-    setSelection((current) => [...current, ...metas]);
-  }, []);
+  // Phones can drop the temporary copies of photos picked from the gallery while the page
+  // waits, so small files are copied into memory as soon as they're picked.
+  const pin = useCallback(
+    (files: File[]) => (session.mobile ? pinFiles(files, PIN_LIMITS[memoryClass()]) : Promise.resolve(files)),
+    [session],
+  );
+
+  const addFiles = useCallback(
+    (files: File[]) => {
+      if (files.length === 0) return;
+      const metas = files.map((file) => {
+        const id = randomId("sel_");
+        filesRef.current.set(id, file);
+        const relative = (file as File & { webkitRelativePath?: string }).webkitRelativePath ?? "";
+        const folder = relative.split("/").slice(0, -1).join("/") || null;
+        return { id, name: file.name, size: file.size, type: file.type, folder };
+      });
+      setSelection((current) => [...current, ...metas]);
+      void pin(files).then((copies) =>
+        copies.forEach((copy, i) => {
+          const id = metas[i]!.id;
+          // Still selected and not already replaced: use the copy.
+          if (copy !== files[i] && filesRef.current.get(id) === files[i]) filesRef.current.set(id, copy);
+        }),
+      );
+    },
+    [pin],
+  );
 
   // Phones close background tabs to free memory; the room reconnects on reload, but files
   // that were selected are gone. Say so instead of leaving people wondering.
@@ -206,14 +225,15 @@ export function RoomView() {
         toast.warning("Time's up for this room. Nothing new can be sent.");
         return 0;
       }
-      const prepared = prefs.sendSmallerPhotos ? await compressPhotos(files) : files;
+      const kept = await pin(files);
+      const prepared = prefs.sendSmallerPhotos ? await compressPhotos(kept) : kept;
       const count = session.transfers.send(prepared, to);
       if (count > 0) {
         lastRecipients.set(to.map(deviceName));
       }
       return count;
     },
-    [deviceName, prefs.sendSmallerPhotos, session],
+    [deviceName, pin, prefs.sendSmallerPhotos, session],
   );
 
   const send = async (to: readonly string[] = [...recipients]) => {

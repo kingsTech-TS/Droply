@@ -87,7 +87,7 @@ export function TransferCard({ item, deviceName, link, actions, media }: Transfe
 
   let statusText: string = statusLabel(status);
   if (status === "paused" && autoResume) statusText = "Connection interrupted. Waiting to reconnect…";
-  if (status === "failed" && firstLeg) statusText = failureMessage(firstLeg);
+  if (status === "failed" && firstLeg) statusText = failureMessage(firstLeg, outgoing);
   if (!outgoing && item.save === "preparing") statusText = "Verifying…";
   if (status === "transferring") statusText = outgoing ? "Sending" : "Receiving";
   if (item.needsReselect) statusText = "Select the file again to resume";
@@ -244,7 +244,7 @@ export function TransferCard({ item, deviceName, link, actions, media }: Transfe
               Resume
             </Button>
           ) : null}
-          {failed && !item.needsReselect ? (
+          {failed && !item.needsReselect && !(!outgoing && firstLeg?.failureReason === "read_error") ? (
             <Button size="sm" onClick={actions.retry}>
               <RotateCcwIcon aria-hidden />
               {firstLeg?.failureReason === "no_route" ? "Try again" : "Resume"}

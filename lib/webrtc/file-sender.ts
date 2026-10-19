@@ -20,7 +20,7 @@ export type SenderResult =
   | { kind: "paused" }
   | { kind: "cancelled" }
   | { kind: "interrupted" }
-  | { kind: "failed"; reason: "integrity" | "rejected" | "timeout" | "read_error" };
+  | { kind: "failed"; reason: "integrity" | "rejected" | "timeout" | "read_error" | "error" };
 
 export interface SenderOptions {
   transport: DataChannelTransport;
@@ -38,6 +38,8 @@ export interface SenderOptions {
   /** Digests saved earlier (resume after reload), by chunk index. */
   knownDigests?: ReadonlyMap<number, string>;
   limiter?: Limiter;
+  /** Waits before retrying a failed chunk read; one entry per retry. */
+  readRetryDelaysMs?: readonly number[];
   onDigest?: (index: number, sha256: string) => void;
   /** Called with verified bytes/chunks after every acknowledgement. */
   onProgress?: (ackedBytes: number, ackedChunks: number) => void;
@@ -47,6 +49,7 @@ export interface SenderOptions {
 }
 
 const MAX_NACKS_PER_CHUNK = 3;
+const READ_RETRY_DELAYS_MS = [250, 1000, 3000];
 
 export class FileSender {
   private readonly digests = new Map<number, string>();
@@ -127,8 +130,9 @@ export class FileSender {
       return this.finish(ok ? { kind: "done" } : { kind: "failed", reason: "integrity" });
     } catch (error) {
       if (error instanceof ChannelClosedError) return this.finish({ kind: "interrupted" });
+      // Not a read failure: don't tell the user their file is unreadable.
       logger.error("sender", "unexpected error", String(error));
-      return this.finish({ kind: "failed", reason: "read_error" });
+      return this.finish({ kind: "failed", reason: "error" });
     }
   }
 
@@ -204,18 +208,25 @@ export class FileSender {
     return { index: next.value, read: this.readChunk(next.value) };
   }
 
+  /** Reads and hashes one chunk. Read errors can be brief on phones, so it tries again a few times. */
   private async readChunk(index: number): Promise<ChunkData | null> {
-    const { source, chunkSize, limiter = readLimiter } = this.options;
+    const { source, chunkSize, limiter = readLimiter, readRetryDelaysMs = READ_RETRY_DELAYS_MS } = this.options;
     const [start, end] = chunkBounds(index, source.size, chunkSize);
-    try {
-      return await limiter.run(async () => {
-        const data = await source.read(start, end);
-        const digest = await sha256Hex(data);
-        return { index, data, digest };
-      });
-    } catch (error) {
-      logger.warn("sender", `reading chunk ${index} failed`, String(error));
-      return null;
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await limiter.run(async () => {
+          const data = await source.read(start, end);
+          const digest = await sha256Hex(data);
+          return { index, data, digest };
+        });
+      } catch (error) {
+        const name = error instanceof Error ? error.name : "Error";
+        logger.warn("sender", `reading chunk ${index} failed (attempt ${attempt + 1}): ${name}`, String(error));
+        const delay = readRetryDelaysMs[attempt];
+        if (delay === undefined || this.result) return null;
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        if (this.result) return null;
+      }
     }
   }
 

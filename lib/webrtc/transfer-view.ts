@@ -91,7 +91,7 @@ export function totalSpeed(items: readonly TransferSnapshot[]): number | null {
   return any ? total : null;
 }
 
-export function failureMessage(leg: LegSnapshot): string {
+export function failureMessage(leg: LegSnapshot, outgoing = true): string {
   switch (leg.failureReason) {
     case "no_route":
       return "We couldn't establish a direct connection.";
@@ -100,7 +100,9 @@ export function failureMessage(leg: LegSnapshot): string {
     case "storage":
       return "The receiving device ran out of storage.";
     case "read_error":
-      return "The file couldn't be read.";
+      return outgoing
+        ? "This device couldn't read the file anymore. Select it again to send it."
+        : "The sender's device couldn't read this file. Ask them to send it again.";
     default:
       return "Transfer interrupted.";
   }
