@@ -366,7 +366,15 @@ export function RoomView() {
 
   return (
     <>
-      <RoomHeader code={room.roomCode} isHost={isHost} transfersActive={anyActive} onLeave={leave} onCloseRoom={closeRoom} />
+      <RoomHeader
+        code={room.roomCode}
+        isHost={isHost}
+        transfersActive={anyActive}
+        onLeave={leave}
+        onCloseRoom={closeRoom}
+        expiresAt={timed ? room.expiresAt : null}
+        wrappingUp={room.wrappingUp}
+      />
       <div className={cn("w-full bg-gradient-to-r from-primary via-electric to-primary/30", themed ? "h-1.5" : "h-1 opacity-60")} aria-hidden />
       <main className="mx-auto w-full max-w-6xl flex-1 space-y-6 px-4 py-6 sm:px-6 2xl:max-w-7xl">
         {themed ? (
