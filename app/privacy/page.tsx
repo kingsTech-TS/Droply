@@ -12,6 +12,10 @@ const SEES = [
   ["File names, sizes and types", "So the other device can approve the transfer. Not stored after the room ends."],
   ["Transfer progress (which chunks arrived)", "So an interrupted transfer can resume."],
   ["Your IP address, as a keyed hash", "For rate limits and, only if a host turns it on, nearby discovery."],
+  [
+    "Anonymous usage counts",
+    "How many devices use rooms each day, by device type, browser, system, and app or browser tab. Distinct users are counted from a keyed hash of a random id your browser keeps, which can't be read back.",
+  ],
   ["Connection setup messages", "Relayed between devices, never stored."],
 ] as const;
 
