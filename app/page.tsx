@@ -1,5 +1,7 @@
 import { Suspense } from "react";
 import { LockIcon, MonitorSmartphoneIcon, QrCodeIcon, RocketIcon, SendIcon, SmartphoneIcon, ZapIcon } from "lucide-react";
+import { AndroidAppBanner } from "@/components/app-download/android-app-banner";
+import { GetTheApp } from "@/components/app-download/android-download";
 import { Footer } from "@/components/layout/footer";
 import { Header } from "@/components/layout/header";
 import { ActiveRooms } from "@/components/landing/active-rooms";
@@ -23,7 +25,7 @@ const FEATURES = [
   {
     icon: MonitorSmartphoneIcon,
     title: "Cross-platform",
-    body: "Phone, tablet, laptop, desktop. Just a browser, nothing to install.",
+    body: "Phone, tablet, laptop, desktop. Just a browser, or the Android app.",
   },
   {
     icon: RocketIcon,
@@ -44,6 +46,7 @@ export default function Home() {
       <Header />
       <main className="flex-1">
         <section className="mx-auto w-full max-w-3xl px-4 pb-16 pt-12 sm:px-6 sm:pt-16">
+          <AndroidAppBanner />
           <div className="mb-8 space-y-3 text-center">
             <h1 className="text-4xl font-semibold tracking-tight text-balance sm:text-5xl">{brand.tagline}</h1>
             <p className="text-lg text-muted-foreground text-balance">Transfer files directly between your devices.</p>
@@ -80,6 +83,8 @@ export default function Home() {
             </ul>
           </div>
         </section>
+
+        <GetTheApp className="bg-muted/30" />
 
         <section id="how-it-works" aria-labelledby="how-heading" className="scroll-mt-20 border-t">
           <div className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6">

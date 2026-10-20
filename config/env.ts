@@ -33,4 +33,16 @@ export const env = {
   benchmarkEnabled: flag(process.env.NEXT_PUBLIC_ENABLE_BENCHMARK),
   // The backend refuses more than 20 unfinished transfers per device.
   maxActiveTransfers: Math.min(positiveInt(process.env.NEXT_PUBLIC_MAX_ACTIVE_TRANSFERS, 16), 20),
+  // The Android app (APK). It's too large for git and Vercel (100 MB per file), so production
+  // links to wherever it is hosted; without that URL the download is hidden. In development it
+  // is served from public/app/Droply.apk.
+  androidApp: {
+    url:
+      process.env.NEXT_PUBLIC_ANDROID_APK_URL ||
+      (process.env.NODE_ENV === "production" ? null : "/app/Droply.apk"),
+    version: process.env.NEXT_PUBLIC_ANDROID_APP_VERSION || null,
+    /** Shown next to the button, e.g. "189 MB". */
+    size: process.env.NEXT_PUBLIC_ANDROID_APK_SIZE || null,
+    sha256: process.env.NEXT_PUBLIC_ANDROID_APK_SHA256 || null,
+  },
 } as const;

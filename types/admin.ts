@@ -9,7 +9,7 @@ export interface Breakdown {
   device_types: Record<string, number>;
   browsers: Record<string, number>;
   operating_systems: Record<string, number>;
-  /** "browser" (a browser tab) or "installed" (the installed app). */
+  /** "browser" (a browser tab), "installed" (website installed as an app) or "app" (native mobile app). */
   clients: Record<string, number>;
 }
 

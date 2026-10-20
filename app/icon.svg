@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <!-- The logo mark (components/layout/logo.tsx): lucide "zap" on the primary color. -->
+  <rect width="32" height="32" rx="8" fill="#4b45e0"/>
+  <path transform="translate(6 6) scale(0.8333)" fill="#f7f7ff" stroke="#f7f7ff" stroke-width="1.5" stroke-linejoin="round" d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>
+</svg>

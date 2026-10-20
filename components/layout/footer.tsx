@@ -12,6 +12,9 @@ export function Footer() {
           <Link href="/#how-it-works" className="hover:text-foreground">
             How it works
           </Link>
+          <Link href="/download" className="hover:text-foreground">
+            Android app
+          </Link>
           <Link href="/history" className="hover:text-foreground">
             History
           </Link>

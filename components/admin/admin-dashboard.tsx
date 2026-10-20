@@ -24,7 +24,11 @@ const PERIODS: { id: AdminPeriod; label: string }[] = [
 ];
 
 const DEVICE_TYPES: Record<string, string> = { phone: "Phone", tablet: "Tablet", laptop: "Laptop", desktop: "Desktop", unknown: "Unknown" };
-const CLIENTS: Record<string, string> = { browser: "Web app (browser tab)", installed: "Installed app" };
+const CLIENTS: Record<string, string> = {
+  app: "Mobile app",
+  browser: "Website (browser tab)",
+  installed: "Website (installed to home screen)",
+};
 const number = new Intl.NumberFormat();
 
 function readToken(): string | null {
@@ -228,7 +232,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
       {overview ? (
         <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <StatTile label="Users" value={overview.users} hint={`Distinct browsers and apps, ${periodLabel}`} />
+            <StatTile label="Users" value={overview.users} hint={`Distinct browsers and app installs, ${periodLabel}`} />
             <StatTile label="Device visits" value={overview.devices} hint={`Times a device entered a room, ${periodLabel}`} />
             <StatTile label="Rooms created" value={overview.rooms} hint={periodLabel} />
             <StatTile
@@ -276,7 +280,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
             </div>
             {breakdown ? (
               <div className="grid gap-3 md:grid-cols-2">
-                <BreakdownCard title="Web app or installed app" data={breakdown.clients} format={(k) => CLIENTS[k] ?? k} />
+                <BreakdownCard title="Mobile app or website" data={breakdown.clients} format={(k) => CLIENTS[k] ?? k} />
                 <BreakdownCard title="Device type" data={breakdown.device_types} format={(k) => DEVICE_TYPES[k] ?? k} />
                 <BreakdownCard title="Browser" data={breakdown.browsers} />
                 <BreakdownCard title="Operating system" data={breakdown.operating_systems} />
