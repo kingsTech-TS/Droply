@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ImagesIcon, KeyboardIcon, MessageSquareTextIcon, MessagesSquareIcon } from "lucide-react";
+import { ChevronDownIcon, ImagesIcon, KeyboardIcon, MessageSquareTextIcon, MessagesSquareIcon, UsersIcon } from "lucide-react";
 import { toast } from "sonner";
 import { DiagnosticsPanel } from "@/components/dev/diagnostics-panel";
+import { EventGallery } from "@/components/event/event-gallery";
 import { DropZone } from "@/components/transfer/drop-zone";
 import type { SelectedFileMeta } from "@/components/transfer/file-item";
 import { IncomingTransfer } from "@/components/transfer/incoming-transfer";
@@ -24,11 +25,16 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { env } from "@/config/env";
 import { useLocalStore } from "@/hooks/use-local-store";
 import { useLeaveWarning } from "@/hooks/use-page-lifecycle";
 import {
+  useEventCatalog,
+  useEventLocal,
+  useEventRequests,
+  useEventThumbs,
   useInbox,
   usePairRequests,
   usePeerLinks,
@@ -92,6 +98,10 @@ export function RoomView() {
   const inbox = useInbox();
   const unreadChat = useUnreadChat();
   const pairRequests = usePairRequests();
+  const catalog = useEventCatalog();
+  const eventThumbs = useEventThumbs();
+  const eventRequests = useEventRequests();
+  const eventLocal = useEventLocal();
   const pairState = useLocalStore(pairing);
   const prefs = useLocalStore(preferences);
   const router = useRouter();
@@ -139,6 +149,11 @@ export function RoomView() {
   );
   const anyActive = transfers.items.some(isActive);
   const isHost = room.hostDeviceId === room.selfId;
+  // Event rooms: the host shares into a gallery; guests pick what to download.
+  const isEvent = room.kind === "event";
+  const eventGuest = isEvent && !isHost;
+  const eventHost = isEvent && isHost;
+  const shareToEvent = useCallback((files: File[]) => session.event.share(files), [session]);
   const theme = THEME_STYLES[room.theme];
   const themed = room.theme !== "default";
   useRoomTheme(room.status === "ended" ? null : room.theme);
@@ -225,6 +240,10 @@ export function RoomView() {
         toast.warning("Time's up for this room. Nothing new can be sent.");
         return 0;
       }
+      if (session.eventGuest) {
+        toast.info("Only the host can share in an event room.");
+        return 0;
+      }
       const kept = await pin(files);
       const prepared = prefs.sendSmallerPhotos ? await compressPhotos(kept) : kept;
       const count = session.transfers.send(prepared, to);
@@ -270,8 +289,8 @@ export function RoomView() {
   const estimate = recipients.size > 0 ? session.transfers.estimateSeconds(selectionBytes, [...recipients]) : null;
 
   useKeyboardShortcuts({
-    onPasteFiles: addFiles,
-    onPasteText: (text) => !timeUp && setTextDialog({ open: true, text, recipients: new Set(recipients) }),
+    onPasteFiles: (files) => (isEvent ? eventHost && void shareToEvent(files) : addFiles(files)),
+    onPasteText: (text) => !timeUp && !eventGuest && setTextDialog({ open: true, text, recipients: new Set(recipients) }),
     onOpenPicker: () => quickPick.current?.click(),
     onToggleRecipient: (index) => {
       const device = online[index];
@@ -458,6 +477,34 @@ export function RoomView() {
             />
             {alone ? (
               <ConnectingAnimation />
+            ) : isEvent ? (
+              <Collapsible className="rounded-2xl border bg-card">
+                <CollapsibleTrigger
+                  disabled={!isHost}
+                  className="group flex min-h-14 w-full items-center justify-between gap-3 px-5 py-3 text-left enabled:cursor-pointer enabled:hover:bg-accent/50"
+                >
+                  <span className="flex items-center gap-2 font-medium">
+                    <UsersIcon aria-hidden className="size-5 text-primary" />
+                    {room.devices.length} {room.devices.length === 1 ? "person" : "people"} here
+                    <span className="text-sm font-normal text-muted-foreground">({online.length + 1} online)</span>
+                  </span>
+                  {isHost ? <ChevronDownIcon aria-hidden className="size-5 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" /> : null}
+                </CollapsibleTrigger>
+                {isHost ? (
+                  <CollapsibleContent className="max-h-[60dvh] overflow-y-auto px-3 pb-3">
+                    <DeviceList
+                      devices={room.devices}
+                      selfId={room.selfId}
+                      links={links}
+                      pairedNames={pairedNames}
+                      actionsFor={(id) => ({
+                        onRetry: (relayOnly) => session.retryPeer(id, relayOnly),
+                        onRemove: () => setRemoveTarget({ id, name: deviceName(id) }),
+                      })}
+                    />
+                  </CollapsibleContent>
+                ) : null}
+              </Collapsible>
             ) : (
               <DeviceList
                 devices={room.devices}
@@ -481,19 +528,25 @@ export function RoomView() {
           <div className={`min-w-0 space-y-6 ${alone ? "order-2" : "order-1"} lg:order-2`}>
             {!alone ? (
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm text-muted-foreground lg:hidden">
-                  {online.length === 1 ? "1 device connected" : `${online.length} devices connected`}
-                </p>
+                {isEvent ? (
+                  <span />
+                ) : (
+                  <p className="text-sm text-muted-foreground lg:hidden">
+                    {online.length === 1 ? "1 device connected" : `${online.length} devices connected`}
+                  </p>
+                )}
                 <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setTextDialog({ open: true, text: "", recipients: new Set(recipients) })}
-                    disabled={online.length === 0 || timeUp}
-                  >
-                    <MessageSquareTextIcon aria-hidden />
-                    Send text
-                  </Button>
+                  {eventGuest ? null : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setTextDialog({ open: true, text: "", recipients: new Set(recipients) })}
+                      disabled={online.length === 0 || timeUp}
+                    >
+                      <MessageSquareTextIcon aria-hidden />
+                      Send text
+                    </Button>
+                  )}
                   <Button variant="outline" size="sm" onClick={() => setChatOpen(true)} aria-label={unreadChat ? `Chat, ${unreadChat} unread` : "Chat"}>
                     <MessagesSquareIcon aria-hidden />
                     Chat
@@ -509,7 +562,27 @@ export function RoomView() {
                 </div>
               </div>
             ) : null}
-            {timeUp ? null : selection.length > 0 ? (
+            {isEvent ? (
+              <EventGallery
+                mode={isHost ? "host" : "guest"}
+                items={catalog}
+                hostName={room.hostDeviceId ? deviceName(room.hostDeviceId) : "the host"}
+                thumbs={eventThumbs}
+                requests={eventRequests}
+                local={eventLocal}
+                transfers={transferItems}
+                hostId={room.hostDeviceId}
+                requestItems={session.event.requestItems}
+                fileFor={(id) => session.event.fileFor(id)}
+                onShare={shareToEvent}
+                onUnshare={(id) => session.event.unshare(id)}
+                onDownload={(ids) => session.event.download(ids)}
+                onRequestThumbs={(ids) => session.event.requestThumbs(ids)}
+                onSave={(localId) => void session.transfers.save(localId).catch((error: unknown) => toast.error(userMessage(error)))}
+                people={room.devices.length}
+                disabled={timeUp}
+              />
+            ) : timeUp ? null : selection.length > 0 ? (
               <>
                 <SendPanel
                   files={selection}
@@ -531,6 +604,7 @@ export function RoomView() {
               <DropZone onFiles={addFiles} />
             )}
             <TextInbox messages={inbox} deviceName={deviceName} />
+            {eventHost ? null : (
             <TransferList
               items={transferItems}
               deviceName={deviceName}
@@ -540,6 +614,7 @@ export function RoomView() {
               onSaveAllZip={() => void saveAllZip()}
               zipProgress={zipProgress}
             />
+            )}
             <StoragePanel
               bytes={session.transfers.temporaryBytes()}
               onClear={() => void session.transfers.clearTemporaryData()}
@@ -595,7 +670,8 @@ export function RoomView() {
         peersOnline={online.length}
         selfId={room.selfId}
         devices={room.devices}
-        locked={timeUp}
+        locked={timeUp || eventGuest}
+        lockedReason={eventGuest && !timeUp ? "Only the host can post in an event room." : undefined}
       />
       <AddTimeDialog open={addTimeOpen} onOpenChange={setAddTimeOpen} info={timeInfo} onConfirm={(minutes) => session.changeTime(minutes)} />
       <AlbumDialog
@@ -603,7 +679,13 @@ export function RoomView() {
         onOpenChange={setAlbumOpen}
         candidates={mediaCandidates as AlbumItem[]}
         deviceName={deviceName}
-        onAddPhotos={(files) => void sendFiles(files, online.map((d) => d.device_id))}
+        onAddPhotos={
+          eventGuest
+            ? undefined
+            : eventHost
+              ? (files) => void shareToEvent(files)
+              : (files) => void sendFiles(files, online.map((d) => d.device_id))
+        }
         onSave={(item) => void saveFile(item.file, item.name)}
         onSaveAll={() => void saveAllZip()}
       />

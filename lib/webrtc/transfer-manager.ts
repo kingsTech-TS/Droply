@@ -167,6 +167,8 @@ export interface TransferManagerOptions {
   maxActiveTransfers?: number;
   /** Auto-accept from everyone (a "My devices" room: only paired devices can be in it). */
   trustAll?: boolean;
+  /** Auto-accept a sender's batch this device asked for (event rooms: files a guest picked). */
+  autoAcceptBatch?: (senderId: string, batchId: string) => boolean;
 }
 
 // --- internal records ---------------------------------------------------------------
@@ -333,8 +335,11 @@ export class TransferManager {
 
   // --- sending ----------------------------------------------------------------------
 
-  /** Queues files for the given recipients. Returns how many files were accepted. */
-  send(files: readonly File[], recipientIds: readonly string[]): number {
+  /**
+   * Queues files for the given recipients. Returns how many files were accepted. `batchId`
+   * groups them as the recipient sees them (event rooms: the id of the guest's request).
+   */
+  send(files: readonly File[], recipientIds: readonly string[], options: { batchId?: string } = {}): number {
     const recipients = [...new Set(recipientIds)];
     if (recipients.length === 0 || files.length === 0) return 0;
     const empty = files.filter((f) => f.size === 0).length;
@@ -346,7 +351,7 @@ export class TransferManager {
     const groupSize = Math.max(1, this.config.max_recipients);
     const groups: string[][] = [];
     for (let i = 0; i < recipients.length; i += groupSize) groups.push(recipients.slice(i, i + groupSize));
-    const batchId = randomId("b_");
+    const batchId = options.batchId ?? randomId("b_");
     let count = 0;
     for (const file of files) {
       if (file.size === 0) continue;
@@ -1291,7 +1296,8 @@ export class TransferManager {
       this.lastRequestKey.set(record.senderId, { key, at: now });
     }
     record.batchId = key;
-    if (this.trusted.has(record.senderId) || this.options.trustAll) {
+    const requested = batch !== null && batch !== undefined && this.options.autoAcceptBatch?.(record.senderId, batch) === true;
+    if (requested || this.trusted.has(record.senderId) || this.options.trustAll) {
       void this.acceptIncoming(record, null);
       return;
     }

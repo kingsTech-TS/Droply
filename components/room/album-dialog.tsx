@@ -21,7 +21,8 @@ export interface AlbumDialogProps {
   onOpenChange: (open: boolean) => void;
   candidates: AlbumItem[];
   deviceName: (id: string) => string;
-  onAddPhotos: (files: File[]) => void;
+  /** Omitted where this device can't send (event guests). */
+  onAddPhotos?: (files: File[]) => void;
   onSave: (item: AlbumItem) => void;
   onSaveAll: () => void;
 }
@@ -56,10 +57,11 @@ export function AlbumDialog({ open, onOpenChange, candidates, deviceName, onAddP
             Room album
           </DialogTitle>
           <DialogDescription>
-            Photos and videos shared in this room. Adding photos sends them to everyone here.
+            Photos and videos shared in this room.{onAddPhotos ? " Adding photos sends them to everyone here." : ""}
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-wrap gap-2">
+          {onAddPhotos ? (
           <Button asChild variant="secondary" size="sm">
             <label className="cursor-pointer">
               <ImagePlusIcon aria-hidden />
@@ -77,6 +79,7 @@ export function AlbumDialog({ open, onOpenChange, candidates, deviceName, onAddP
               />
             </label>
           </Button>
+          ) : null}
           {received >= 2 ? (
             <Button variant="outline" size="sm" onClick={onSaveAll}>
               Save all received

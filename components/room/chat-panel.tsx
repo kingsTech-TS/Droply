@@ -21,8 +21,10 @@ export interface ChatPanelProps {
   selfId: string;
   /** Every device in the room, this one included. */
   devices: DeviceView[];
-  /** The room's time is up: nothing new can be sent. */
+  /** Nothing new can be sent (time is up, or an event guest). */
   locked?: boolean;
+  /** Shown in place of the message box text while locked. */
+  lockedReason?: string;
 }
 
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -80,6 +82,7 @@ export function ChatPanel({
   selfId,
   devices,
   locked = false,
+  lockedReason,
 }: ChatPanelProps) {
   const [text, setText] = useState("");
   const [replyTo, setReplyTo] = useState<InboxMessage | null>(null);
@@ -187,7 +190,7 @@ export function ChatPanel({
   };
 
   const placeholder = locked
-    ? "Time's up. The chat is closed."
+    ? (lockedReason ?? "Time's up. The chat is closed.")
     : peersOnline === 0
       ? "Waiting for other devices…"
       : group
