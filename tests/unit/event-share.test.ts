@@ -2,11 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { EventShare } from "@/lib/session/event-share";
 import { parseServerMessage } from "@/lib/webrtc/server-messages";
 import { parseCtl, type AppMessage } from "@/lib/webrtc/protocol";
-import type { CatalogItem } from "@/types/room";
+import type { CatalogItem, CatalogItemIn } from "@/types/room";
 
 vi.mock("@/lib/api/rooms", () => ({
-  addToCatalog: vi.fn(async (_room: string, items: Array<Omit<CatalogItem, "added_at">>) => ({
-    items: items.map((i) => ({ folder: null, ...i, added_at: "2026-10-20T10:00:00Z" })),
+  addToCatalog: vi.fn(async (_room: string, items: CatalogItemIn[]) => ({
+    items: items.map((i): CatalogItem => ({ ...i, folder: i.folder ?? null, added_at: "2026-10-20T10:00:00Z" })),
   })),
   removeFromCatalog: vi.fn(async () => ({ items: [] })),
 }));
