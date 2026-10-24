@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { LogOutIcon, TimerIcon } from "lucide-react";
+import { LogOutIcon } from "lucide-react";
 import { Logo } from "@/components/layout/logo";
 import { PreferencesButton } from "@/components/layout/preferences-dialog";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
@@ -16,9 +16,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { useCountdown } from "@/hooks/use-countdown";
-import { cn } from "@/lib/utils/cn";
-import { formatCountdown, formatRoomCode } from "@/lib/utils/format";
+import { formatRoomCode } from "@/lib/utils/format";
 
 export interface RoomHeaderProps {
   code: string;
@@ -26,35 +24,9 @@ export interface RoomHeaderProps {
   transfersActive: boolean;
   onLeave: () => void;
   onCloseRoom: () => void;
-  /** When the room ends (ms); the timer stays visible in the header. */
-  expiresAt?: number | null;
-  wrappingUp?: boolean;
 }
 
-/** Always-visible room timer for the sticky header. */
-function HeaderTimer({ expiresAt, wrappingUp }: { expiresAt: number; wrappingUp: boolean }) {
-  const remaining = useCountdown(expiresAt);
-  if (remaining === null) return null;
-  const up = wrappingUp || remaining === 0;
-  const soon = up || remaining < 2 * 60 * 1000;
-  const label = up ? "Time's up" : formatCountdown(remaining);
-  return (
-    <span
-      role="timer"
-      aria-label={up ? "Room time is up" : `Room ends in ${label}`}
-      title={up ? "Time's up" : "Time left in this room"}
-      className={cn(
-        "inline-flex h-8 items-center gap-1 rounded-full border px-2.5 text-xs font-medium tabular-nums sm:text-sm",
-        soon ? "border-warning/50 bg-warning/12 text-warning" : "bg-muted text-foreground",
-      )}
-    >
-      <TimerIcon aria-hidden className="size-3.5 sm:size-4" />
-      <span className={up ? undefined : "font-mono"}>{label}</span>
-    </span>
-  );
-}
-
-export function RoomHeader({ code, isHost, transfersActive, onLeave, onCloseRoom, expiresAt = null, wrappingUp = false }: RoomHeaderProps) {
+export function RoomHeader({ code, isHost, transfersActive, onLeave, onCloseRoom }: RoomHeaderProps) {
   const [confirm, setConfirm] = useState<"leave" | "close" | null>(null);
   return (
     <header className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70">
@@ -65,7 +37,6 @@ export function RoomHeader({ code, isHost, transfersActive, onLeave, onCloseRoom
           <span className="whitespace-nowrap font-mono text-sm font-semibold tracking-wider" aria-label={`Room ${code}`}>
             {formatRoomCode(code)}
           </span>
-          {expiresAt !== null ? <HeaderTimer expiresAt={expiresAt} wrappingUp={wrappingUp} /> : null}
           <Button
             variant="ghost"
             size="sm"

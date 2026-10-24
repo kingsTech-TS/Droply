@@ -21,7 +21,7 @@ export interface ChatPanelProps {
   selfId: string;
   /** Every device in the room, this one included. */
   devices: DeviceView[];
-  /** Nothing new can be sent (time is up, or an event guest). */
+  /** Nothing can be sent (event guests). */
   locked?: boolean;
   /** Shown in place of the message box text while locked. */
   lockedReason?: string;
@@ -190,7 +190,7 @@ export function ChatPanel({
   };
 
   const placeholder = locked
-    ? (lockedReason ?? "Time's up. The chat is closed.")
+    ? (lockedReason ?? "The chat is closed.")
     : peersOnline === 0
       ? "Waiting for other devices…"
       : group

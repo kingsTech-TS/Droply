@@ -9,14 +9,10 @@ import { useIsClient } from "@/hooks/use-is-client";
 import { brand } from "@/config/brand";
 import { QrCode } from "./qr-code";
 import { RoomCode } from "./room-code";
-import { RoomCountdown } from "./room-countdown";
 
 export interface RoomSharePanelProps {
   code: string;
   joinUrl: string;
-  expiresAt: number | null;
-  /** Timed room whose time is up, finishing its last transfers. */
-  wrappingUp?: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onPresent: () => void;
@@ -24,8 +20,8 @@ export interface RoomSharePanelProps {
   settings?: ReactNode;
 }
 
-/** Room code, QR code and expiry. Collapsible once other devices have joined. */
-export function RoomSharePanel({ code, joinUrl, expiresAt, wrappingUp = false, open, onOpenChange, onPresent, settings }: RoomSharePanelProps) {
+/** Room code and QR code. Collapsible once other devices have joined. */
+export function RoomSharePanel({ code, joinUrl, open, onOpenChange, onPresent, settings }: RoomSharePanelProps) {
   const canShare = useIsClient() && typeof navigator.share === "function";
   const invite = async () => {
     try {
@@ -69,7 +65,6 @@ export function RoomSharePanel({ code, joinUrl, expiresAt, wrappingUp = false, o
                 Present
               </Button>
             </div>
-            <RoomCountdown expiresAt={expiresAt} wrappingUp={wrappingUp} />
             {settings ? <div className="w-full border-t pt-4">{settings}</div> : null}
           </div>
         </CollapsibleContent>

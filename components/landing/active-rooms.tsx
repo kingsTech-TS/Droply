@@ -24,8 +24,8 @@ type Status = { kind: "loading" } | { kind: "known"; rooms: Map<string, RoomStat
 function endsIn(expiresAt: string, now: number): string | null {
   const minutes = Math.round((Date.parse(expiresAt) - now) / 60_000);
   if (!Number.isFinite(minutes)) return null;
-  if (minutes <= 1) return "ends soon unless someone is active";
-  return minutes < 60 ? `open for ${minutes} more min` : `open for ${Math.round(minutes / 60)} more h`;
+  // No time limit: only mention closing when the room is about to close for lack of activity.
+  return minutes <= 2 ? "closes soon if nobody's in it" : null;
 }
 
 /**

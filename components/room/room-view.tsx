@@ -44,7 +44,6 @@ import {
   useUnreadChat,
 } from "@/hooks/use-room-session";
 import { useBackgroundNotifications, useCelebrations, useKeyboardShortcuts } from "@/hooks/use-room-effects";
-import { useTimeUp } from "@/hooks/use-time-up";
 import { useWakeLock } from "@/hooks/use-wake-lock";
 import { userMessage } from "@/lib/api/errors";
 import { preferences } from "@/lib/fun/prefs";
@@ -69,12 +68,11 @@ import { ConnectionBanner } from "./connection-banner";
 import { DeviceList } from "./device-list";
 import { PairRequestDialog } from "./pair-request-dialog";
 import { PresentDialog } from "./present-dialog";
-import { ExpiryPrompt, KeepTabOpenBanner, TimedRoomEndingPrompt, TimeUpBanner } from "./room-banners";
+import { ExpiryPrompt, KeepTabOpenBanner } from "./room-banners";
 import { RoomEnded } from "./room-ended";
 import { RoomHeader } from "./room-header";
 import { RoomSettings } from "./room-settings";
 import { RoomSharePanel } from "./room-share-panel";
-import { AddTimeDialog, addTimeBlocked, RoomTimeSettings, type RoomTimeInfo } from "./room-time";
 import { SpeedTestDialog } from "./speed-test-dialog";
 import { TextDropDialog, TextInbox } from "./text-drop";
 
@@ -123,7 +121,6 @@ export function RoomView() {
   const [albumOpen, setAlbumOpen] = useState(false);
   const [presentOpen, setPresentOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
-  const [addTimeOpen, setAddTimeOpen] = useState(false);
   const [speedTestPeer, setSpeedTestPeer] = useState<string | null>(null);
   const [zipProgress, setZipProgress] = useState<number | null>(null);
   const quickPick = useRef<HTMLInputElement>(null);
@@ -157,11 +154,6 @@ export function RoomView() {
   const theme = THEME_STYLES[room.theme];
   const themed = room.theme !== "default";
   useRoomTheme(room.status === "ended" ? null : room.theme);
-  // Timed rooms: once time is up, files already moving finish but nothing new is sent.
-  const timed = room.durationSeconds !== null;
-  const timeUp = useTimeUp(room.expiresAt, timed, room.wrappingUp);
-  const timeInfo: RoomTimeInfo = { createdAt: room.createdAt, durationSeconds: room.durationSeconds, timeExtended: room.timeExtended };
-  const addTimeLocked = addTimeBlocked(timeInfo);
 
   useWakeLock(anyActive);
   useLeaveWarning(anyActive);
@@ -236,10 +228,6 @@ export function RoomView() {
   const sendFiles = useCallback(
     async (files: File[], to: string[]) => {
       if (files.length === 0 || to.length === 0) return 0;
-      if (session.timeUp()) {
-        toast.warning("Time's up for this room. Nothing new can be sent.");
-        return 0;
-      }
       if (session.eventGuest) {
         toast.info("Only the host can share in an event room.");
         return 0;
@@ -280,7 +268,6 @@ export function RoomView() {
   }, [autoSendKey]);
 
   const sendTo = (deviceId: string) => {
-    if (timeUp) return;
     setChosen(new Set([deviceId]));
     if (selection.length === 0) quickPick.current?.click();
   };
@@ -290,7 +277,7 @@ export function RoomView() {
 
   useKeyboardShortcuts({
     onPasteFiles: (files) => (isEvent ? eventHost && void shareToEvent(files) : addFiles(files)),
-    onPasteText: (text) => !timeUp && !eventGuest && setTextDialog({ open: true, text, recipients: new Set(recipients) }),
+    onPasteText: (text) => !eventGuest && setTextDialog({ open: true, text, recipients: new Set(recipients) }),
     onOpenPicker: () => quickPick.current?.click(),
     onToggleRecipient: (index) => {
       const device = online[index];
@@ -411,8 +398,6 @@ export function RoomView() {
         transfersActive={anyActive}
         onLeave={leave}
         onCloseRoom={closeRoom}
-        expiresAt={timed ? room.expiresAt : null}
-        wrappingUp={room.wrappingUp}
       />
       <div className={cn("w-full bg-gradient-to-r from-primary via-electric to-primary/30", themed ? "h-1.5" : "h-1 opacity-60")} aria-hidden />
       <main className="mx-auto w-full max-w-6xl flex-1 space-y-6 px-4 py-6 sm:px-6 2xl:max-w-7xl">
@@ -435,17 +420,8 @@ export function RoomView() {
           </p>
         ) : null}
         <ConnectionBanner room={room} onRetry={() => session.retryConnection()} />
-        {timed ? (
-          <TimedRoomEndingPrompt
-            expiresAt={room.expiresAt}
-            timeUp={timeUp}
-            onAddTime={isHost && addTimeLocked === null ? () => setAddTimeOpen(true) : undefined}
-            lockedReason={isHost ? addTimeLocked : null}
-          />
-        ) : (
-          <ExpiryPrompt expiresAt={alone ? room.expiresAt : null} onKeepOpen={() => session.keepAlive()} />
-        )}
-        <TimeUpBanner show={timeUp} transfersRunning={anyActive} />
+        {/* Rooms have no time limit; an empty room closes after a while unless kept open. */}
+        <ExpiryPrompt expiresAt={alone ? room.expiresAt : null} onKeepOpen={() => session.keepAlive()} />
         <KeepTabOpenBanner show={session.mobile && anyActive} />
         {requestCards.length > 0 ? (
           <div className="space-y-3" aria-live="polite">
@@ -458,19 +434,16 @@ export function RoomView() {
             <RoomSharePanel
               code={room.roomCode}
               joinUrl={joinUrl}
-              expiresAt={room.expiresAt}
-              wrappingUp={room.wrappingUp}
               open={shareOpen}
               onOpenChange={(open) => setShareChoice({ open, alone })}
               onPresent={() => setPresentOpen(true)}
               settings={
-                isHost && !timeUp ? (
+                isHost ? (
                   <RoomSettings
                     theme={room.theme}
                     discoverable={room.discoverable}
                     onTheme={(t) => session.setTheme(t)}
                     onDiscoverable={(v) => session.setDiscoverable(v)}
-                    time={timed ? <RoomTimeSettings info={timeInfo} onAddTime={() => setAddTimeOpen(true)} /> : undefined}
                   />
                 ) : undefined
               }
@@ -515,8 +488,8 @@ export function RoomView() {
                   onSend: () => sendTo(id),
                   onDropFiles: (files) =>
                     void sendFiles(files, [id]).then((n) => n > 0 && toast.success(`Sending to ${deviceName(id)}`)),
-                  onSendText: () => !timeUp && setTextDialog({ open: true, text: "", recipients: new Set([id]) }),
-                  onSpeedTest: () => !timeUp && setSpeedTestPeer(id),
+                  onSendText: () => setTextDialog({ open: true, text: "", recipients: new Set([id]) }),
+                  onSpeedTest: () => setSpeedTestPeer(id),
                   onPair: () => void session.requestPairing(id),
                   onRetry: (relayOnly) => session.retryPeer(id, relayOnly),
                   onRemove: isHost ? () => setRemoveTarget({ id, name: deviceName(id) }) : undefined,
@@ -541,7 +514,7 @@ export function RoomView() {
                       variant="outline"
                       size="sm"
                       onClick={() => setTextDialog({ open: true, text: "", recipients: new Set(recipients) })}
-                      disabled={online.length === 0 || timeUp}
+                      disabled={online.length === 0}
                     >
                       <MessageSquareTextIcon aria-hidden />
                       Send text
@@ -580,9 +553,8 @@ export function RoomView() {
                 onRequestThumbs={(ids) => session.event.requestThumbs(ids)}
                 onSave={(localId) => void session.transfers.save(localId).catch((error: unknown) => toast.error(userMessage(error)))}
                 people={room.devices.length}
-                disabled={timeUp}
               />
-            ) : timeUp ? null : selection.length > 0 ? (
+            ) : selection.length > 0 ? (
               <>
                 <SendPanel
                   files={selection}
@@ -670,10 +642,9 @@ export function RoomView() {
         peersOnline={online.length}
         selfId={room.selfId}
         devices={room.devices}
-        locked={timeUp || eventGuest}
-        lockedReason={eventGuest && !timeUp ? "Only the host can post in an event room." : undefined}
+        locked={eventGuest}
+        lockedReason={eventGuest ? "Only the host can post in an event room." : undefined}
       />
-      <AddTimeDialog open={addTimeOpen} onOpenChange={setAddTimeOpen} info={timeInfo} onConfirm={(minutes) => session.changeTime(minutes)} />
       <AlbumDialog
         open={albumOpen}
         onOpenChange={setAlbumOpen}
@@ -694,7 +665,6 @@ export function RoomView() {
         onOpenChange={setPresentOpen}
         code={room.roomCode}
         joinUrl={joinUrl}
-        expiresAt={room.expiresAt}
         devices={room.devices.length}
       />
       <PairRequestDialog request={pairRequests[0] ?? null} onRespond={(peerId, accept) => void session.respondToPairing(peerId, accept)} />

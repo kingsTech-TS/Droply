@@ -3,7 +3,6 @@
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { formatRoomCode } from "@/lib/utils/format";
 import { QrCode } from "./qr-code";
-import { RoomCountdown } from "./room-countdown";
 
 /** Full-screen QR code for scanning from across the room (events, classes). */
 export function PresentDialog({
@@ -11,14 +10,12 @@ export function PresentDialog({
   onOpenChange,
   code,
   joinUrl,
-  expiresAt,
   devices,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   code: string;
   joinUrl: string;
-  expiresAt: number | null;
   devices: number;
 }) {
   return (
@@ -34,7 +31,6 @@ export function PresentDialog({
           <p className="text-lg text-muted-foreground">
             {devices === 1 ? "1 device joined" : `${devices} devices joined`} · or open {joinUrl.replace(/^https?:\/\//, "").replace(/\/join\/.*/, "")}
           </p>
-          <RoomCountdown expiresAt={expiresAt} />
         </div>
       </DialogContent>
     </Dialog>
