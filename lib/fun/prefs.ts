@@ -11,6 +11,8 @@ export interface Preferences {
   notifications: boolean;
   /** Resize large photos before sending. */
   sendSmallerPhotos: boolean;
+  /** Save received files by themselves (into the Droply folder, or as downloads). */
+  autoSave: boolean;
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -19,6 +21,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   haptics: true,
   notifications: false,
   sendSmallerPhotos: false,
+  autoSave: true,
 };
 
 export const preferences = new LocalStore<Preferences>("droply:prefs", DEFAULT_PREFERENCES, (raw) => {

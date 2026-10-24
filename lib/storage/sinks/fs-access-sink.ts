@@ -38,10 +38,39 @@ export async function pickDirectory(): Promise<DirectoryHandleLike | null> {
  * Writes each chunk at its offset directly into a file the user chose. No double disk usage.
  * `folderPath` (already sanitized) recreates a sent folder's structure inside that folder.
  */
+/** Names being written right now, per folder: two files with one name don't pick the same. */
+const reserved = new WeakMap<DirectoryHandleLike, Set<string>>();
+
+async function exists(dir: DirectoryHandleLike, name: string): Promise<boolean> {
+  try {
+    await dir.getFileHandle(name);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** `name`, or "name (1).ext", "name (2).ext"… : never overwrites a file already in the folder. */
+async function freeName(dir: DirectoryHandleLike, name: string): Promise<string> {
+  const taken = reserved.get(dir) ?? new Set<string>();
+  reserved.set(dir, taken);
+  const dot = name.lastIndexOf(".");
+  const base = dot > 0 ? name.slice(0, dot) : name;
+  const ext = dot > 0 ? name.slice(dot) : "";
+  for (let i = 0; ; i += 1) {
+    const candidate = i === 0 ? name : `${base} (${i})${ext}`;
+    if (taken.has(candidate)) continue;
+    taken.add(candidate);
+    if (!(await exists(dir, candidate))) return candidate;
+  }
+}
+
 export class FsAccessSink implements ChunkSink {
   readonly kind = "fs-access" as const;
   private writable: Promise<WritableFileStream> | null = null;
   private target: Promise<DirectoryHandleLike> | null = null;
+  /** The name actually used in the folder (fileName, or a free variant of it). */
+  private finalName: Promise<string> | null = null;
 
   constructor(
     private readonly directory: DirectoryHandleLike,
@@ -64,7 +93,8 @@ export class FsAccessSink implements ChunkSink {
   private stream(): Promise<WritableFileStream> {
     this.writable ??= (async () => {
       const dir = await this.folder();
-      const handle = (await dir.getFileHandle(this.fileName, { create: true })) as WritableFileHandle;
+      this.finalName ??= freeName(dir, this.fileName);
+      const handle = (await dir.getFileHandle(await this.finalName, { create: true })) as WritableFileHandle;
       return handle.createWritable({ keepExistingData: true });
     })();
     return this.writable;
@@ -93,7 +123,10 @@ export class FsAccessSink implements ChunkSink {
       this.writable = null;
       await stream.abort().catch(() => undefined);
     }
+    if (!this.finalName) return; // nothing was written
     const dir = await this.folder().catch(() => this.directory);
-    await dir.removeEntry(this.fileName).catch(() => undefined);
+    const name = await this.finalName;
+    await dir.removeEntry(name).catch(() => undefined);
+    reserved.get(dir)?.delete(name);
   }
 }

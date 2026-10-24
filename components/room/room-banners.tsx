@@ -1,6 +1,6 @@
 "use client";
 
-import { SmartphoneIcon, TimerIcon } from "lucide-react";
+import { FolderCheckIcon, SmartphoneIcon, TimerIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCountdown } from "@/hooks/use-countdown";
 import { formatCountdown } from "@/lib/utils/format";
@@ -12,6 +12,19 @@ export function KeepTabOpenBanner({ show }: { show: boolean }) {
     <div role="status" className="flex items-center gap-3 rounded-xl border bg-accent/60 px-4 py-3 text-sm">
       <SmartphoneIcon aria-hidden className="size-4 shrink-0 text-accent-foreground" />
       Keep this tab open until the transfer finishes. If it&apos;s interrupted, it continues from where it stopped.
+    </div>
+  );
+}
+
+/** The browser wants the Droply folder's permission confirmed (one click, then silent again). */
+export function SaveFolderBanner({ label, onAllow }: { label: string | null; onAllow: () => void }) {
+  return (
+    <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border bg-accent/60 px-4 py-3 text-sm">
+      <FolderCheckIcon aria-hidden className="size-4 shrink-0 text-primary" />
+      <span className="flex-1">Allow Droply to keep saving received files to {label ?? "your Droply folder"}.</span>
+      <Button size="sm" onClick={onAllow}>
+        Allow
+      </Button>
     </div>
   );
 }

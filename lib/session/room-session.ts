@@ -7,7 +7,9 @@ import { closeRoom, getRoom, updateRoomSettings } from "@/lib/api/rooms";
 import { isApiError, userMessage } from "@/lib/api/errors";
 import { createTransfer, getTransfer, transferAction } from "@/lib/api/transfers";
 import { detectDevice } from "@/lib/device/detection";
+import { preferences } from "@/lib/fun/prefs";
 import { addToHistory } from "@/lib/history/history";
+import { autoDownload, getDroplyFolder } from "@/lib/storage/droply-folder";
 import { recordRoomEnded, recordRoomEntered, updateRoomHistory, type RoomEndReason } from "@/lib/history/rooms";
 import { addPairedDevice, ensurePairingKey, pairing } from "@/lib/pairing/pairing";
 import { browserSinkFactory } from "@/lib/storage/sinks/factory";
@@ -235,6 +237,14 @@ export class RoomSession {
       trustAll: session.mode === "my-devices",
       // Event guests accept the files they picked without being asked again.
       autoAcceptBatch: (senderId, batchId) => this.event.isRequested(senderId, batchId),
+      // Received files save themselves: into the Droply folder where the browser allows it,
+      // otherwise as a normal download.
+      defaultDirectory: () => (preferences.get().autoSave ? getDroplyFolder() : Promise.resolve(null)),
+      autoSave: async (file, fileName) => {
+        if (!preferences.get().autoSave) return false;
+        autoDownload(file, fileName);
+        return true;
+      },
     });
     this.messenger = new PeerMessenger(this.peers);
     this.event = new EventShare({

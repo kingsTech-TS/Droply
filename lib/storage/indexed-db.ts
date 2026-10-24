@@ -2,10 +2,12 @@
 // than throwing, because private windows and some embedded browsers block storage.
 
 export const DB_NAME = "droply";
-export const DB_VERSION = 1;
+export const DB_VERSION = 2;
 export const STORE_LEGS = "legs";
 export const STORE_DIGESTS = "digests";
 export const STORE_CHUNKS = "chunks";
+/** Small settings that must live in IndexedDB (e.g. the Droply folder's handle). */
+export const STORE_SETTINGS = "settings";
 
 let dbPromise: Promise<IDBDatabase | null> | null = null;
 
@@ -33,6 +35,7 @@ export function openDb(): Promise<IDBDatabase | null> {
       if (!db.objectStoreNames.contains(STORE_DIGESTS)) db.createObjectStore(STORE_DIGESTS);
       // Key: [transferId, index] → Blob (only for the IndexedDB storage tier).
       if (!db.objectStoreNames.contains(STORE_CHUNKS)) db.createObjectStore(STORE_CHUNKS);
+      if (!db.objectStoreNames.contains(STORE_SETTINGS)) db.createObjectStore(STORE_SETTINGS);
     };
     request.onsuccess = () => {
       const db = request.result;

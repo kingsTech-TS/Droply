@@ -68,7 +68,9 @@ import { ConnectionBanner } from "./connection-banner";
 import { DeviceList } from "./device-list";
 import { PairRequestDialog } from "./pair-request-dialog";
 import { PresentDialog } from "./present-dialog";
-import { ExpiryPrompt, KeepTabOpenBanner } from "./room-banners";
+import { ExpiryPrompt, KeepTabOpenBanner, SaveFolderBanner } from "./room-banners";
+import { useDroplyFolder } from "@/hooks/use-droply-folder";
+import { getDroplyFolder } from "@/lib/storage/droply-folder";
 import { RoomEnded } from "./room-ended";
 import { RoomHeader } from "./room-header";
 import { RoomSettings } from "./room-settings";
@@ -102,6 +104,7 @@ export function RoomView() {
   const eventLocal = useEventLocal();
   const pairState = useLocalStore(pairing);
   const prefs = useLocalStore(preferences);
+  const saveFolder = useDroplyFolder();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -423,6 +426,9 @@ export function RoomView() {
         {/* Rooms have no time limit; an empty room closes after a while unless kept open. */}
         <ExpiryPrompt expiresAt={alone ? room.expiresAt : null} onKeepOpen={() => session.keepAlive()} />
         <KeepTabOpenBanner show={session.mobile && anyActive} />
+        {prefs.autoSave && saveFolder.status === "needs-permission" ? (
+          <SaveFolderBanner label={saveFolder.label} onAllow={() => void getDroplyFolder({ ask: true })} />
+        ) : null}
         {requestCards.length > 0 ? (
           <div className="space-y-3" aria-live="polite">
             {requestCards}

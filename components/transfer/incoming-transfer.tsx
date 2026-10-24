@@ -8,6 +8,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useIsClient } from "@/hooks/use-is-client";
+import { useDroplyFolder } from "@/hooks/use-droply-folder";
+import { useLocalStore } from "@/hooks/use-local-store";
+import { preferences } from "@/lib/fun/prefs";
+import { chooseDroplyFolder, getDroplyFolder, refreshDroplyFolder } from "@/lib/storage/droply-folder";
 import { canSaveDirectlyToDisk, pickDirectory } from "@/lib/storage/sinks/fs-access-sink";
 import { formatBytes } from "@/lib/utils/format";
 import type { IncomingRequest, TransferSnapshot } from "@/lib/webrtc/transfer-manager";
@@ -31,6 +35,8 @@ export function IncomingTransfer({ request, senderName, files, checkStorage, onA
   const [busy, setBusy] = useState(false);
   const titleId = useId();
   const reduceMotion = useReducedMotion();
+  const { autoSave } = useLocalStore(preferences);
+  const folder = useDroplyFolder();
 
   useEffect(() => {
     let cancelled = false;
@@ -43,6 +49,26 @@ export function IncomingTransfer({ request, senderName, files, checkStorage, onA
   }, [checkStorage, request.totalBytes]);
 
   const tooBig = fits === false;
+
+  // Accept straight into the Droply folder (this click can confirm the browser's permission,
+  // or pick where the folder goes the first time).
+  const accept = async () => {
+    setBusy(true);
+    let directory: Awaited<ReturnType<typeof pickDirectory>> = null;
+    if (autoSave && directPossible) {
+      const status = await refreshDroplyFolder();
+      directory = status === "unset" ? await chooseDroplyFolder() : await getDroplyFolder({ ask: true });
+    }
+    onAccept({ directory: directory ?? undefined, trust });
+  };
+
+  const saveNote = !autoSave
+    ? null
+    : folder.status === "ready" || folder.status === "needs-permission"
+      ? `Saves to ${folder.label ?? "your Droply folder"} automatically.`
+      : folder.status === "unset"
+        ? "Saves automatically to a Droply folder: you'll choose where it goes this once."
+        : "Saves to your Downloads folder automatically.";
 
   const acceptToFolder = async () => {
     // The folder picker must open directly from this click.
@@ -109,21 +135,16 @@ export function IncomingTransfer({ request, senderName, files, checkStorage, onA
             {directPossible ? (
               <Button variant={tooBig ? "default" : "secondary"} onClick={() => void acceptToFolder()} disabled={busy}>
                 <FolderDownIcon aria-hidden />
-                Save to folder…
+                {autoSave ? "Other folder…" : "Save to folder…"}
               </Button>
             ) : null}
             {!tooBig || !directPossible ? (
-              <Button
-                onClick={() => {
-                  setBusy(true);
-                  onAccept({ trust });
-                }}
-                disabled={busy}
-              >
+              <Button onClick={() => void accept()} disabled={busy}>
                 Accept
               </Button>
             ) : null}
           </div>
+          {saveNote ? <p className="text-right text-xs text-muted-foreground">{saveNote}</p> : null}
         </CardContent>
       </Card>
     </motion.div>

@@ -48,6 +48,7 @@ interface WorldOptions {
   /** Delay before a receiver's "complete" reaches the server (ms). */
   slowComplete?: number;
   sinks?: SinkFactory;
+  autoSave?: (file: File, fileName: string, folderPath: string | null) => Promise<boolean>;
 }
 
 function world(ids: string[], options: WorldOptions = {}) {
@@ -65,6 +66,7 @@ function world(ids: string[], options: WorldOptions = {}) {
       send: backend.wsFor(id),
       resume: new MemoryResumeStore(),
       sinks: options.sinks ?? memorySinks,
+      autoSave: options.autoSave,
       mobile: false,
       deviceName: (d) => d,
       maxActiveTransfers: options.maxActive,
@@ -171,6 +173,32 @@ describe("TransferManager end to end", () => {
     expect(b.notices.some((n) => n.message.includes("Couldn't assemble"))).toBe(false);
     expect(incoming(b)[0]?.verification).toBe("verified");
     expect(await savedBytesOf(b, "photo.jpg")).toBe(await sha256Hex(await file.arrayBuffer()));
+  });
+
+  it("saves received files by itself (no Save button)", async () => {
+    const saved: Array<{ name: string; size: number }> = [];
+    const { get } = world(["dv_aaaaaaaaaaaaaaaaaaaa", "dv_bbbbbbbbbbbbbbbbbbbb"], {
+      autoSave: async (file, fileName) => {
+        saved.push({ name: fileName, size: file.size });
+        return true;
+      },
+    });
+    const a = get("dv_aaaaaaaaaaaaaaaaaaaa");
+    const b = get("dv_bbbbbbbbbbbbbbbbbbbb");
+    a.manager.send([makeFile("party.jpg", 50 * KiB), makeFile("notes.pdf", 20 * KiB)], [b.id]);
+    await acceptAll(b);
+    await until(() => incoming(b).length === 2 && incoming(b).every((i) => i.save === "saved"), 8000, "both saved");
+    expect(saved.map((s) => s.name).sort()).toEqual(["notes.pdf", "party.jpg"]);
+    expect(saved.find((s) => s.name === "party.jpg")?.size).toBe(50 * KiB);
+  });
+
+  it("keeps the Save button when saving by itself isn't possible", async () => {
+    const { get } = world(["dv_aaaaaaaaaaaaaaaaaaaa", "dv_bbbbbbbbbbbbbbbbbbbb"], { autoSave: async () => false });
+    const a = get("dv_aaaaaaaaaaaaaaaaaaaa");
+    const b = get("dv_bbbbbbbbbbbbbbbbbbbb");
+    a.manager.send([makeFile("party.jpg", 30 * KiB)], [b.id]);
+    await acceptAll(b);
+    await until(() => incoming(b)[0]?.save === "ready", 8000, "ready to save");
   });
 
   it("groups several files from one sender into one request and receives them all", async () => {
