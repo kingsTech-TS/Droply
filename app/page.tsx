@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { LockIcon, MonitorSmartphoneIcon, QrCodeIcon, RocketIcon, SendIcon, SmartphoneIcon, ZapIcon } from "lucide-react";
 import { AndroidAppBanner } from "@/components/app-download/android-app-banner";
 import { GetTheApp } from "@/components/app-download/android-download";
+import { UpdateAnnouncementBanner } from "@/components/app-download/update-announcement-banner";
 import { Footer } from "@/components/layout/footer";
 import { Header } from "@/components/layout/header";
 import { ActiveRooms } from "@/components/landing/active-rooms";
@@ -46,6 +47,7 @@ export default function Home() {
       <Header />
       <main className="flex-1">
         <section className="mx-auto w-full max-w-3xl px-4 pb-16 pt-12 sm:px-6 sm:pt-16">
+          <UpdateAnnouncementBanner />
           <AndroidAppBanner />
           <div className="mb-8 space-y-3 text-center">
             <h1 className="text-4xl font-semibold tracking-tight text-balance sm:text-5xl">{brand.tagline}</h1>
