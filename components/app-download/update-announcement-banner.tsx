@@ -51,8 +51,8 @@ export function UpdateAnnouncementBanner() {
             />
           )}
 
-          <div className="relative flex items-center gap-3">
-            <span className="relative inline-flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
+          <div className="relative flex items-start gap-3 sm:items-center">
+            <span className="relative inline-flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary sm:size-10">
               {reduceMotion ? null : (
                 <motion.span
                   aria-hidden
@@ -69,26 +69,28 @@ export function UpdateAnnouncementBanner() {
                 <DownloadIcon aria-hidden className="size-5" />
               </motion.span>
             </span>
-            <p className="min-w-0 flex-1 text-sm">
-              <span className="font-medium">Droply app has been updated.</span>{" "}
-              <span className="text-muted-foreground">
-                A new version was released on <time dateTime={RELEASED}>{releasedLabel}</time>. Download it and update to get the
-                latest improvements.
-              </span>
-            </p>
-            <Link
-              href="/download"
-              className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 sm:min-h-9"
-            >
-              <DownloadIcon aria-hidden className="size-4" />
-              <span className="hidden sm:inline">Update now</span>
-              <span className="sm:hidden">Update</span>
-            </Link>
+            {/* Stacks the button under the text on phones; one row from sm up. */}
+            <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-center">
+              <p className="min-w-0 flex-1 text-sm text-pretty">
+                <span className="font-medium">Droply app has been updated.</span>{" "}
+                <span className="text-muted-foreground">
+                  A new version was released on <time dateTime={RELEASED}>{releasedLabel}</time>. Download it and update to get the
+                  latest improvements.
+                </span>
+              </p>
+              <Link
+                href="/download"
+                className="inline-flex min-h-11 w-full shrink-0 items-center justify-center gap-1.5 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 sm:min-h-9 sm:w-auto"
+              >
+                <DownloadIcon aria-hidden className="size-4" />
+                Update now
+              </Link>
+            </div>
             <button
               type="button"
               onClick={dismiss}
               aria-label="Dismiss"
-              className="inline-flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground hover:bg-accent sm:size-9"
+              className="-mt-1 -mr-1 inline-flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground hover:bg-accent sm:m-0 sm:size-9"
             >
               <XIcon aria-hidden className="size-4" />
             </button>
